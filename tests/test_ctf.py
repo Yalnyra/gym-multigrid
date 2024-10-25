@@ -189,7 +189,7 @@ def test_fight_policy() -> None:
 
 def test_capture_policy() -> None:
     animation_path: str = "tests/out/animations/ctf_mvn_capture_policy.gif"
-    map_path: str = "tests/assets/board.txt"
+    map_path: str = "tests/assets/board_wall.txt"
 
     field_map = load_text_map(map_path)
     enemy_policy = "capture"
