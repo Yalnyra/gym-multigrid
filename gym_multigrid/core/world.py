@@ -3,7 +3,12 @@ from dataclasses import dataclass, field
 
 from numpy.typing import NDArray
 
-from gym_multigrid.core.constants import COLORS, CTF_COLORS, MAZE_COLORS
+from gym_multigrid.core.constants import (
+    COLORS,
+    CTF_COLORS,
+    MAZE_COLORS,
+    LABYRINTH_COLORS,
+)
 
 WorldT = TypeVar("WorldT", bound="World")
 
@@ -106,5 +111,25 @@ MazeWorld = World(
         "agent": 1,
         "flag": 2,
         "obstacle": 3,
+    },
+)
+
+LabyrinthWorld = World(
+    encode_dim=3,
+    normalize_obs=1,
+    COLORS=LABYRINTH_COLORS,
+    OBJECT_TO_IDX={
+        "unseen": 0,
+        "empty": 1,
+        "wall": 2,
+        "agent": 3,
+        "button_wall": 4,
+        "goal": 5,
+        "button": 6,
+        "box": 7,
+        "floor": 8,
+        "blue_zone": 9,
+        "red_zone": 10,
+        "purple_zone": 11,
     },
 )
