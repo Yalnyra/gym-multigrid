@@ -99,6 +99,11 @@ class Grid:
         self.vert_wall(x, y, h)
         self.vert_wall(x + w - 1, y, h)
 
+    def wall_rect_filled(self, x: int, y: int, w: int, h: int) -> None:
+        for i in range(w):
+            for j in range(h):
+                self.set(x + i, y + j, Wall(self.world))
+
     def rotate_left(self) -> "Grid":
         """
         Rotate the grid to the left (counter-clockwise)
