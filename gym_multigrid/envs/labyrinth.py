@@ -1,0 +1,302 @@
+from typing import Any, Literal, Type, TypedDict, TypeVar
+
+import numpy as np
+from numpy.typing import NDArray
+from gymnasium.spaces.box import Box
+
+from gym_multigrid.core.agent import NavigationActions, ActionsT, Agent
+from gym_multigrid.core.constants import TILE_PIXELS
+from gym_multigrid.core.grid import Grid
+from gym_multigrid.core.object import AgentGoal, Block
+from gym_multigrid.core.world import WorldT, LabyrinthWorld
+from gym_multigrid.multigrid import MultiGridEnv
+
+
+class GoalConfig(TypedDict):
+    group_index: int
+    pos: tuple[tuple[int, int], ...]
+    valid_agent_indices: tuple[int, ...]
+    called_actions: list[str]
+    action_obj_type: str
+    action_obj_group: int
+    next_goal: int | Literal["terminal"]
+
+
+class ActionObjectConfig(TypedDict):
+    obj_type: str
+    group_index: int
+    pos: tuple[tuple[int, int], ...]
+
+
+goal_configs: list[GoalConfig] = [
+    {
+        "group_index": 0,
+        "pos": ((4, 1), (4, 2), (4, 3)),
+        "valid_agent_indices": (0, 1, 2),
+        "called_actions": ["open"],
+        "action_obj_type": "block",
+        "action_obj_group": 0,
+        "next_goal": 2,
+    },
+    {
+        "group_index": 1,
+        "pos": ((3, 5), (3, 6), (3, 7)),
+        "valid_agent_indices": (0, 1, 2),
+        "called_actions": ["open"],
+        "action_obj_type": "block",
+        "action_obj_group": 1,
+        "next_goal": 2,
+    },
+    {
+        "group_index": 2,
+        "pos": ((6, 3), (6, 4), (6, 5)),
+        "valid_agent_indices": (0, 1, 2),
+        "called_actions": ["open"],
+        "action_obj_type": "block",
+        "action_obj_group": 2,
+        "next_goal": 3,
+    },
+    {
+        "group_index": 3,
+        "pos": ((8, 3), (8, 4), (8, 5)),
+        "valid_agent_indices": (0, 1, 2),
+        "called_actions": ["open"],
+        "action_obj_type": "block",
+        "action_obj_group": 3,
+        "next_goal": "terminal",
+    },
+]
+
+action_obj_config: list[ActionObjectConfig] = [
+    {"obj_type": "block", "group_index": 0, "pos": ((5, 1), (5, 2), (5, 3))},
+    {"obj_type": "block", "group_index": 1, "pos": ((4, 5), (4, 6), (4, 7))},
+    {
+        "obj_type": "block",
+        "group_index": 2,
+        "pos": ((7, 2), (7, 3), (7, 4), (7, 5), (7, 6)),
+    },
+]
+
+
+class ObjectGroup:
+    def __init__(
+        self, obj_type: str, group_index: int, pos: tuple[tuple[int, int], ...]
+    ) -> None:
+        self.obj_type: str = obj_type
+        self.group_index: int = group_index
+        self.pos: tuple[tuple[int, int], ...] = pos
+
+    def call_action(self, action: str, args: dict[str, Any] = {}) -> Any:
+        return getattr(self, action)(**args)
+
+
+ObjectGroupT = TypeVar("ObjectGroupT", bound="ObjectGroup")
+
+
+class GoalGroup(ObjectGroup):
+    def __init__(
+        self,
+        obj_type: str,
+        group_index: int,
+        pos: tuple[tuple[int, int], ...],
+        valid_agent_indices: tuple[int, ...],
+        called_actions: list[str],
+        action_obj_type: str,
+        action_obj_group: int,
+        next_goal: int | Literal["terminal"],
+    ) -> None:
+        super().__init__(obj_type, group_index, pos)
+        self.valid_agent_indices: tuple[int, ...] = valid_agent_indices
+        self.called_actions: list[str] = called_actions
+        self.action_obj_type: str = action_obj_type
+        self.action_obj_group: int = action_obj_group
+        self.next_goal: int | Literal["terminal"] = next_goal
+
+    def agents_on_goals(self, agents: list[Agent]) -> bool:
+        for pos, agent_index in zip(self.pos, self.valid_agent_indices):
+            if (
+                agents[agent_index].pos[0] != pos[0]
+                or agents[agent_index].pos[1] != pos[1]
+            ):
+                return False
+            else:
+                pass
+
+        return True
+
+    def open(
+        self, obj_group_dict: dict[str, dict[int, ObjectGroupT]], grid: Grid
+    ) -> None:
+        obj_group_dict[self.action_obj_type][self.action_obj_group].call_action(
+            "open", {"grid": grid}
+        )
+
+
+class BlockGroup(ObjectGroup):
+    def __init__(
+        self, obj_type: str, group_index: int, pos: tuple[tuple[int, int], ...]
+    ) -> None:
+        super().__init__(obj_type, group_index, pos)
+
+    def open(self, grid: Grid) -> None:
+        for pos in self.pos:
+            grid[pos[0]][pos[1]].unlock()
+
+
+class LabyrinthEnv(MultiGridEnv):
+    """
+    Multi-agent labyrinth env with multiple tasks.
+    """
+
+    def __init__(
+        self,
+        num_agents: int = 3,
+        init_pos: list[tuple[int, int]] = [(1, 3), (1, 4), (1, 5)],
+        goal_configs: list[GoalConfig] = goal_configs,
+        action_obj_config: list[ActionObjectConfig] = action_obj_config,
+        observation_option: Literal["final_goal", "all_goals"] = "final_goal",
+        width: int | None = 9,
+        height: int | None = 10,
+        max_steps: int = 100,
+        actions_set: type[ActionsT] = NavigationActions,
+        world: WorldT = LabyrinthWorld,
+        render_mode: Literal["human"] | Literal["rgb_array"] = "rgb_array",
+    ) -> None:
+        self.num_agents: int = num_agents
+        self.goal_configs: list[GoalConfig] = goal_configs
+        self.action_obj_config: list[ActionObjectConfig] = action_obj_config
+        self.observation_option: Literal["final_goal", "all_goals"] = observation_option
+        self.init_pos: list[tuple[int, int], ...] = init_pos
+
+        agent_view_size: int = (7,)
+        agents: list[Agent] = [
+            Agent(world, i, agent_view_size, actions_set) for i in range(num_agents)
+        ]
+
+        uncached_object_types: list[str] = (["agent"],)
+
+        super().__init__(
+            agents=agents,
+            width=width,
+            height=height,
+            max_steps=max_steps,
+            world=world,
+            render_mode=render_mode,
+            uncached_object_types=uncached_object_types,
+        )
+
+    def _set_observation_space(self) -> Box:
+        max_x: int = self.width - 1
+        max_y: int = self.height - 1
+
+        match self.observation_option:
+            case "final_goal":
+                num_elements: int = self.num_agents + self.num_agents
+                observation_space = Box(
+                    low=np.zeros(num_elements),
+                    high=np.array([max_x, max_y] * self.num_agents).flatten(),
+                    dtype=np.int_,
+                )
+            case "all_goals":
+                num_elements: int = self.num_agents + self.num_agents * len(
+                    self.goal_configs
+                )
+                observation_space = Box(
+                    low=np.zeros(num_elements),
+                    high=np.array([max_x, max_y] * self.num_agents).flatten(),
+                    dtype=np.int_,
+                )
+            case _:
+                raise ValueError(
+                    f"Invalid observation option: {self.observation_option}"
+                )
+
+        return observation_space
+
+    def reset(
+        self,
+        *,
+        seed: int | None = None,
+        options: dict | None = None,
+    ) -> tuple[NDArray[np.int_], dict[str, Any]]:
+        super().reset(seed=seed, options=options)
+        obs = self._get_obs()
+        info: dict[str, Any] = self._get_info()
+
+        return obs, info
+
+    def _gen_grid(self, width, height) -> None:
+        self.grid = Grid(width, height, self.world)
+
+        # Generate walls
+        self.grid.wall_rect(0, 0, width, height)
+        self.grid.wall_rect_filled(7, 1, 2, 1)
+        self.grid.wall_rect_filled(7, 7, 2, 1)
+        self.grid.wall_rect_filled(3, 4, 2, 1)
+
+        # Place the agents
+        assert len(self.agents) == len(self.init_pos)
+        for agent, pos in zip(self.agents, self.init_pos):
+            self.place_agent(agent, pos)
+
+        obj_group_dict: dict[str, dict[int, ObjectGroupT]] = {}
+
+        # Place the goal objects
+        for goal_config in self.goal_configs:
+            positions: tuple[tuple[int, int], ...] = goal_config["pos"]
+            valid_agent_indices: tuple[int, ...] = goal_config["valid_agent_indices"]
+            group_index: int = goal_config["group_index"]
+            obj_type: str = goal_config["action_obj_type"]
+            action_obj_group: int = goal_config["action_obj_group"]
+            next_goal: int | Literal["terminal"] = goal_config["next_goal"]
+            called_actions: list[str] = goal_config["called_actions"]
+
+            obj_group_dict[obj_type] = {
+                group_index: GoalGroup(
+                    obj_type,
+                    group_index,
+                    positions,
+                    valid_agent_indices,
+                    called_actions,
+                    obj_type,
+                    action_obj_group,
+                    next_goal,
+                )
+            }
+
+            if next_goal == "terminal":
+                self.final_goal: tuple[tuple[int, int], ...] = positions
+            else:
+                pass
+
+            for pos, agent_index in zip(positions, valid_agent_indices):
+                goal = AgentGoal(self.world, agent_index)
+                self.put_obj(goal, *pos)
+
+        # Place blocks
+        for action_obj_config in self.action_obj_config:
+            obj_type: str = action_obj_config["obj_type"]
+            group_index: int = action_obj_config["group_index"]
+            positions: tuple[tuple[int, int], ...] = action_obj_config["pos"]
+
+            obj_group_dict[obj_type] = {
+                group_index: BlockGroup(obj_type, group_index, positions)
+            }
+
+            for pos in positions:
+                block = Block(self.world)
+                self.put_obj(block, *pos)
+
+        self.obj_group_dict = obj_group_dict
+
+    def _get_obs(self) -> NDArray[np.int_]:
+        obs: list[list[int, int]] = []
+
+        for agent in self.agents:
+            obs.extend(agent.pos)
+
+        match self.observation_option:
+            case "final_goal":
+                obs.extend(self.final_goal)
+
+        return np.array(obs)
