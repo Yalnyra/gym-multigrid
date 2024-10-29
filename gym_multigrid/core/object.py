@@ -398,12 +398,14 @@ class AgentGoal(WorldObj):
         self,
         world: WorldT,
         accepting_agent_idx: int,
+        goal_group: int,
         type: str = "goal",
         color: str = "yellow",
         bg_color: str | None = None,
     ):
         super().__init__(world, type, color, bg_color)
         self.accepting_agent_idx: int = accepting_agent_idx
+        self.goal_group: int = goal_group
 
     def can_overlap(self):
         return True
@@ -424,7 +426,7 @@ class Block(WorldObj):
     def can_overlap(self) -> bool:
         return not self.locked
 
-    def unlock(self) -> None:
+    def open(self) -> None:
         self.locked = False
         self.color = "light_grey"
 

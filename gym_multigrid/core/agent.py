@@ -257,10 +257,7 @@ class Agent(WorldObj):
         assert self.pos is not None
         grid.set(*self.pos, self)
 
-        if bg_color is not None:
-            self.bg_color = bg_color
-        else:
-            pass
+        self.bg_color = bg_color
 
     @property
     def dir_vec(self):
