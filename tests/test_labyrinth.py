@@ -18,7 +18,10 @@ def test_labyrinth() -> None:
         action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
         frames.append(env.render())
+        print(f"reward: {reward}")
+        print(f"terminated: {terminated}")
+        print(f"truncated: {truncated}")
         if terminated or truncated:
             break
 
-    imageio.mimsave(animation_path, frames, duration=0.5, loop=10)
+    imageio.mimsave(animation_path, frames, loop=10)

@@ -259,7 +259,7 @@ class LabyrinthEnv(MultiGridEnv):
             for i in range(num_agents)
         ]
 
-        uncached_object_types: list[str] = (["agent"],)
+        uncached_object_types: list[str] = ["agent"]
 
         super().__init__(
             agents=agents,
@@ -400,7 +400,7 @@ class LabyrinthEnv(MultiGridEnv):
                     }
 
                     for pos in positions:
-                        zone = Zone(self.world, color, f"{color}_zone")
+                        zone = Zone(self.world, f"{color}", f"{color}_zone")
                         self.put_obj(zone, *pos)
 
                 case _:
@@ -463,12 +463,14 @@ class LabyrinthEnv(MultiGridEnv):
         else:
             next_cell: WorldObjT | None = self.grid.get(*next_pos)
 
-            if self._is_agent_on_goal(next_pos):
-                bg_color: str = "yellow"
-            elif self._is_agent_on_unlocked_block(next_pos):
+            if self._is_agent_on_unlocked_block(next_pos):
                 bg_color: str = "light_grey"
+            elif self._is_agent_on_zone(next_pos) == "blue":
+                bg_color = "blue"
+            elif self._is_agent_on_zone(next_pos) == "red":
+                bg_color = "red"
             else:
-                bg_color = "white"
+                bg_color = None
 
             if next_cell is None:
                 agent.move(next_pos, self.grid, self.init_grid, bg_color=bg_color)
@@ -476,6 +478,15 @@ class LabyrinthEnv(MultiGridEnv):
                 agent.move(next_pos, self.grid, self.init_grid, bg_color=bg_color)
             else:
                 pass
+
+    def _is_agent_on_zone(self, pos: Position) -> Literal["blue", "red"] | None:
+        for zone in self.obj_group_dict["zone"].values():
+            if (pos[0], pos[1]) in zone.pos:
+                return zone.color
+            else:
+                pass
+
+        return None
 
     def _is_agent_on_goal(self, pos: Position) -> bool:
         for goal in self.goals:
@@ -550,3 +561,5 @@ class LabyrinthEnv(MultiGridEnv):
                 return True
             else:
                 pass
+
+        return False
