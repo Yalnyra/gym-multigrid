@@ -307,19 +307,21 @@ class LabyrinthEnv(MultiGridEnv):
 
         match self.observation_option:
             case "final_goal":
-                num_elements: int = self.num_agents + self.num_agents
+                num_obj: int = 2 * self.num_agents
+                num_elements: int = 2 * num_obj
                 observation_space = Box(
                     low=np.zeros(num_elements),
-                    high=np.array([max_x, max_y] * self.num_agents).flatten(),
+                    high=np.array([max_x, max_y] * num_obj).flatten(),
                     dtype=np.int_,
                 )
             case "all_goals":
-                num_elements: int = self.num_agents + self.num_agents * len(
-                    self.goal_group_config
+                num_obj: int = 2 * (
+                    self.num_agents + self.num_agents * len(self.goal_group_config)
                 )
+                num_elements: int = 2 * num_obj
                 observation_space = Box(
                     low=np.zeros(num_elements),
-                    high=np.array([max_x, max_y] * self.num_agents).flatten(),
+                    high=np.array([max_x, max_y] * num_obj).flatten(),
                     dtype=np.int_,
                 )
             case _:
