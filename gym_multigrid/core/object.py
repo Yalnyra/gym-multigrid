@@ -160,6 +160,15 @@ class Floor(WorldObj):
         fill_coords(img, point_in_rect(0, 1, 0, 1), self.world.COLORS[self.color])
 
 
+class Zone(Floor):
+    """
+    Alias for Floor
+    """
+
+    def __init__(self, world: WorldT, color: str = "blue", type: str = "zone"):
+        super().__init__(world, color, type)
+
+
 class Lava(WorldObj):
     def __init__(self, world: WorldT):
         super().__init__(world, "lava", "red")

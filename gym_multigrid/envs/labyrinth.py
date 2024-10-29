@@ -6,7 +6,7 @@ from gymnasium.spaces import Box, MultiDiscrete
 
 from gym_multigrid.core.agent import NavigationActions, ActionsT, Agent, NAV_DIR_TO_VEC
 from gym_multigrid.core.grid import Grid
-from gym_multigrid.core.object import AgentGoal, Block, WorldObjT
+from gym_multigrid.core.object import AgentGoal, Block, WorldObjT, Zone
 from gym_multigrid.core.world import WorldT, LabyrinthWorld
 from gym_multigrid.multigrid import MultiGridEnv
 from gym_multigrid.typing import Position
@@ -27,6 +27,7 @@ class ObjectGroupConfig(TypedDict):
     group_index: int
     pos: tuple[tuple[int, int], ...]
     obj_args: dict[str, Any]
+    group_args: dict[str, Any]
 
 
 class RewardConfig(TypedDict):
@@ -81,33 +82,37 @@ obj_group_config: list[ObjectGroupConfig] = [
         "group_index": 0,
         "pos": ((5, 1), (5, 2), (5, 3)),
         "obj_args": {},
+        "group_args": {},
     },
     {
         "obj_type": "block",
         "group_index": 1,
         "pos": ((4, 5), (4, 6), (4, 7)),
         "obj_args": {},
+        "group_args": {},
     },
     {
         "obj_type": "block",
         "group_index": 2,
         "pos": ((7, 2), (7, 3), (7, 4), (7, 5), (7, 6)),
         "obj_args": {},
+        "group_args": {},
     },
     {
-        "obj_type": "detect_zone",
+        "obj_type": "zone",
         "group_index": 0,
         "pos": ((2, 1), (2, 2), (2, 3)),
-        "obj_args": {"color": "blue", "visual_detect_prob": 0.005},
+        "obj_args": {"color": "blue"},
+        "group_args": {"visual_detect_prob": 0.005},
     },
     {
-        "obj_type": "detect_zone",
+        "obj_type": "zone",
         "group_index": 1,
         "pos": ((2, 5), (2, 6), (2, 7)),
-        "obj_args": {
-            "color": "red",
+        "obj_args": {"color": "red"},
+        "group_args": {
             "visual_detect_prob": 0.005,
-            "radio_detect_prob": 0.005,
+            "radio_detect_prob": 0.06,
         },
     },
 ]
@@ -183,6 +188,41 @@ class BlockGroup(ObjectGroup):
     def open(self, grid: Grid) -> None:
         for pos in self.pos:
             grid[pos[0]][pos[1]].unlock()
+
+
+class ZoneGroup(ObjectGroup):
+    def __init__(
+        self,
+        obj_type: str,
+        group_index: int,
+        pos: tuple[tuple[int, int], ...],
+        color: str,
+        visual_detect_prob: float = 0.0,
+        radio_detect_prob: float = 0.0,
+    ) -> None:
+        super().__init__(obj_type, group_index, pos)
+        self.color: str = color
+        self.visual_detect_prob: float = visual_detect_prob
+        self.radio_detect_prob: float = radio_detect_prob
+
+    def detect_agents(
+        self, agents: list[Agent], random_generator: np.random.Generator
+    ) -> bool:
+        for agent in agents:
+            if self.detect_agent(agent, random_generator):
+                return True
+            else:
+                pass
+
+        return False
+
+    def detect_agent(self, agent: Agent, random_generator: np.random.Generator) -> bool:
+        if (agent.pos[0], agent.pos[1]) in self.pos:
+            visual_detect: bool = random_generator.uniform() < self.visual_detect_prob
+            radio_detect: bool = random_generator.uniform() < self.radio_detect_prob
+            return visual_detect or radio_detect
+        else:
+            return False
 
 
 class LabyrinthEnv(MultiGridEnv):
@@ -342,6 +382,27 @@ class LabyrinthEnv(MultiGridEnv):
                     for pos in positions:
                         block = Block(self.world)
                         self.put_obj(block, *pos)
+
+                case "zone":
+                    color: str = obj_group_config["obj_args"]["color"]
+                    args: dict[str, Any] = (
+                        obj_group_config["group_args"] | obj_group_config["obj_args"]
+                    )
+
+                    obj_group_dict[obj_type] = {
+                        group_index: ZoneGroup(
+                            obj_type,
+                            group_index,
+                            positions,
+                            color,
+                            **args,
+                        )
+                    }
+
+                    for pos in positions:
+                        zone = Zone(self.world, color)
+                        self.put_obj(zone, *pos)
+
                 case _:
                     raise ValueError(f"Invalid object type: {obj_type}")
 
@@ -370,7 +431,7 @@ class LabyrinthEnv(MultiGridEnv):
         self._move_agents(actions)
         obs = self._get_obs()
         reward: float = self.compute_reward(actions)
-        terminated: bool = False
+        terminated: bool = self._agents_detected()
         truncated: bool = self.step_count >= self.max_steps
         info: dict[str, Any] = self._get_info()
 
@@ -476,3 +537,13 @@ class LabyrinthEnv(MultiGridEnv):
         previous_pos = agent.pos - agent.dir_vec[action]
 
         return previous_pos
+
+    def _agents_detected(self) -> bool:
+        for zone in self.obj_group_dict["zone"].values():
+            if zone.call_action(
+                "detect_agents",
+                {"agents": self.agents, "random_generator": self.np_random},
+            ):
+                return True
+            else:
+                pass
