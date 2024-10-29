@@ -238,8 +238,8 @@ class LabyrinthEnv(MultiGridEnv):
         obj_group_config: list[ObjectGroupConfig] = obj_group_config,
         reward_config: RewardConfig = reward_config,
         observation_option: Literal["final_goal", "all_goals"] = "final_goal",
-        width: int | None = 9,
-        height: int | None = 10,
+        width: int | None = 10,
+        height: int | None = 9,
         max_steps: int = 100,
         actions_set: type[ActionsT] = NavigationActions,
         agent_dir_to_vec: list[NDArray[np.int_]] = NAV_DIR_TO_VEC,
@@ -319,6 +319,7 @@ class LabyrinthEnv(MultiGridEnv):
         options: dict | None = None,
     ) -> tuple[NDArray[np.int_], dict[str, Any]]:
         super().reset(seed=seed, options=options)
+        self.init_grid: Grid = self.grid.copy()
         obs = self._get_obs()
         info: dict[str, Any] = self._get_info()
 
@@ -394,13 +395,12 @@ class LabyrinthEnv(MultiGridEnv):
                             obj_type,
                             group_index,
                             positions,
-                            color,
                             **args,
                         )
                     }
 
                     for pos in positions:
-                        zone = Zone(self.world, color)
+                        zone = Zone(self.world, color, f"{color}_zone")
                         self.put_obj(zone, *pos)
 
                 case _:
@@ -409,17 +409,19 @@ class LabyrinthEnv(MultiGridEnv):
         self.obj_group_dict = obj_group_dict
 
     def _get_obs(self) -> NDArray[np.int_]:
-        obs: list[tuple[int, int]] = []
+        obs: list[int] = []
 
         for agent in self.agents:
-            obs.extend(agent.pos)
+            obs += [agent.pos[0], agent.pos[1]]
 
         match self.observation_option:
             case "final_goal":
-                obs.extend(self.final_goal)
+                for goal in self.final_goal:
+                    obs += list(goal)
             case "all_goals":
                 for goal in self.goals:
-                    obs.extend(goal)
+                    for pos in goal:
+                        obs += list(pos)
 
         return np.array(obs).flatten()
 
@@ -449,7 +451,7 @@ class LabyrinthEnv(MultiGridEnv):
 
         assert agent.pos is not None
 
-        next_pos = agent.pos + agent.dir_vec[action]
+        next_pos = agent.pos + agent.dir_to_vec[action]
 
         if (
             next_pos[0] < 0
@@ -477,14 +479,15 @@ class LabyrinthEnv(MultiGridEnv):
 
     def _is_agent_on_goal(self, pos: Position) -> bool:
         for goal in self.goals:
-            if pos[0] == goal[0] and pos[1] == goal[1]:
-                return True
+            for goal_pos in goal:
+                if pos[0] == goal_pos[0] and pos[1] == goal_pos[1]:
+                    return True
 
         return False
 
     def _is_agent_on_assigned_goal(self, pos: Position, agent_index: int) -> bool:
         cell = self.grid.get(*pos)
-        if isinstance(cell, AgentGoal) and cell.agent_index == agent_index:
+        if isinstance(cell, AgentGoal) and cell.accepting_agent_idx == agent_index:
             return True
         else:
             return False
@@ -534,7 +537,7 @@ class LabyrinthEnv(MultiGridEnv):
 
         assert agent.pos is not None
 
-        previous_pos = agent.pos - agent.dir_vec[action]
+        previous_pos = agent.pos - agent.dir_to_vec[action]
 
         return previous_pos
 
