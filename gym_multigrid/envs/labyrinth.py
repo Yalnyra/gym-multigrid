@@ -142,6 +142,24 @@ class ObjectGroup:
 ObjectGroupT = TypeVar("ObjectGroupT", bound="ObjectGroup")
 
 
+class BlockGroup(ObjectGroup):
+    def __init__(
+        self, obj_type: str, group_index: int, pos: tuple[tuple[int, int], ...]
+    ) -> None:
+        super().__init__(obj_type, group_index, pos)
+        self.locked: bool = True
+
+    def open(self, grid: Grid) -> None:
+        for pos in self.pos:
+            block: Block = grid.get(*pos)
+            block.open()
+
+        self.locked = False
+
+    def is_locked(self) -> bool:
+        return self.locked
+
+
 class GoalGroup(ObjectGroup):
     def __init__(
         self,
@@ -173,36 +191,11 @@ class GoalGroup(ObjectGroup):
 
         return True
 
-    def open(
-        self, obj_group_dict: dict[str, dict[int, ObjectGroupT]], grid: Grid
-    ) -> None:
-        obj_group_dict[self.action_obj_type][self.action_obj_group].call_action(
-            "open", {"grid": grid}
-        )
+    def open(self, block_group_dict: dict[int, BlockGroup], grid: Grid) -> None:
+        block_group_dict[self.action_obj_group].open(grid)
 
-    def is_block_locked(
-        self, obj_group_dict: dict[str, dict[int, ObjectGroupT]]
-    ) -> bool:
-        return obj_group_dict[self.action_obj_type][self.action_obj_group].call_action(
-            "is_locked"
-        )
-
-
-class BlockGroup(ObjectGroup):
-    def __init__(
-        self, obj_type: str, group_index: int, pos: tuple[tuple[int, int], ...]
-    ) -> None:
-        super().__init__(obj_type, group_index, pos)
-        self.locked: bool = True
-
-    def open(self, grid: Grid) -> None:
-        for pos in self.pos:
-            grid.get(*pos).open()
-
-        self.locked = False
-
-    def is_locked(self) -> bool:
-        return self.locked
+    def is_block_locked(self, block_group_dict: dict[int, BlockGroup]) -> bool:
+        return block_group_dict[self.action_obj_group].is_locked()
 
 
 class ZoneGroup(ObjectGroup):
@@ -240,6 +233,12 @@ class ZoneGroup(ObjectGroup):
             return False
 
 
+class ObjectGroupDict(TypedDict):
+    goal: dict[int, GoalGroup]
+    block: dict[int, BlockGroup]
+    zone: dict[int, ZoneGroup]
+
+
 class LabyrinthEnv(MultiGridEnv):
     """
     Multi-agent labyrinth env with multiple tasks.
@@ -248,6 +247,7 @@ class LabyrinthEnv(MultiGridEnv):
     def __init__(
         self,
         num_agents: int = 3,
+        p_intended_action: float = 0.95,
         init_pos: list[tuple[int, int]] = [(1, 3), (1, 4), (1, 5)],
         goal_group_config: list[GoalGroupConfig] = goal_group_config,
         obj_group_config: list[ObjectGroupConfig] = obj_group_config,
@@ -262,6 +262,7 @@ class LabyrinthEnv(MultiGridEnv):
         render_mode: Literal["human"] | Literal["rgb_array"] = "rgb_array",
     ) -> None:
         self.num_agents: int = num_agents
+        self.p_intended_action: float = p_intended_action
         self.goal_group_config: list[GoalGroupConfig] = goal_group_config
         self.obj_group_config: list[ObjectGroupConfig] = obj_group_config
         self.reward_config: RewardConfig = reward_config
@@ -349,7 +350,7 @@ class LabyrinthEnv(MultiGridEnv):
         self.grid.wall_rect_filled(7, 7, 2, 1)
         self.grid.wall_rect_filled(3, 4, 2, 1)
 
-        obj_group_dict: dict[str, dict[int, ObjectGroupT]] = {}
+        obj_group_dict: ObjectGroupDict = {}
 
         # Place the goal objects
         goal_dict: dict[int, GoalGroup] = {}
@@ -375,7 +376,7 @@ class LabyrinthEnv(MultiGridEnv):
             )
 
             for pos, agent_index in zip(positions, valid_agent_indices):
-                goal = AgentGoal(self.world, agent_index, group_index)
+                goal = AgentGoal(self.world, agent_index, group_index, color="green")
                 self.put_obj(goal, *pos)
 
         obj_group_dict["goal"] = goal_dict
@@ -473,42 +474,67 @@ class LabyrinthEnv(MultiGridEnv):
         assert agent.pos is not None
 
         next_pos = agent.pos + agent.dir_to_vec[action]
+        available_pos: list[Position] = self._get_available_pos(agent)
 
-        if (
-            next_pos[0] < 0
-            or next_pos[1] < 0
-            or next_pos[0] >= self.width
-            or next_pos[1] >= self.height
-        ):
-            pass
-        else:
+        next_pos_in_available_pos: bool = False
+        for pos in available_pos:
+            if np.array_equal(pos, next_pos):
+                next_pos_in_available_pos = True
+                break
+            else:
+                pass
+
+        if next_pos_in_available_pos:
+            action_probs: list[float] = []
+            for pos in available_pos:
+                action_probs.append(
+                    self.p_intended_action
+                    if np.array_equal(pos, next_pos)
+                    else (1 - self.p_intended_action) / (len(available_pos) - 1)
+                )
+
+            # Normalize the action probabilities
+            action_probs = np.array(action_probs) / np.sum(action_probs)
+
+            next_pos = self.np_random.choice(available_pos, p=action_probs)
             next_cell: WorldObjT | None = self.grid.get(*next_pos)
-
             if next_cell is None:
                 agent.move(next_pos, self.grid, self.init_grid, bg_color=None)
             elif next_cell.can_overlap():
                 agent.move(
-                    next_pos, self.grid, self.init_grid, bg_color=next_cell.color
+                    next_pos, self.grid, self.init_grid, bg_color=next_cell.bg_color
                 )
             else:
-                pass
+                raise ValueError(
+                    f"Invalid action f{action} and position f{next_pos} for agent {agent.index}. Available positions: {available_pos}"
+                )
+        else:
+            pass
 
-    def _is_agent_on_zone(self, pos: Position) -> Literal["blue", "red"] | None:
-        for zone in self.obj_group_dict["zone"].values():
-            if (pos[0], pos[1]) in zone.pos:
-                return zone.color
+    def _get_available_pos(self, agent: Agent) -> list[Position]:
+        possible_pos: list[Position] = []
+
+        for direction in agent.dir_to_vec:
+            next_pos: Position = agent.pos + direction
+
+            if (
+                next_pos[0] < 0
+                or next_pos[1] < 0
+                or next_pos[0] >= self.width
+                or next_pos[1] >= self.height
+            ):
+                pass
             else:
-                pass
+                next_cell: WorldObjT | None = self.grid.get(*next_pos)
 
-        return None
+                if self.grid.get(*next_pos) is None:
+                    possible_pos.append(next_pos)
+                elif next_cell.can_overlap():
+                    possible_pos.append(next_pos)
+                else:
+                    pass
 
-    def _is_agent_on_goal(self, pos: Position) -> bool:
-        for goal in self.goals:
-            for goal_pos in goal:
-                if pos[0] == goal_pos[0] and pos[1] == goal_pos[1]:
-                    return True
-
-        return False
+        return possible_pos
 
     def _is_agent_on_terminal_goal(self, pos: Position) -> bool:
         for goal_pos in self.final_goal:
@@ -518,19 +544,14 @@ class LabyrinthEnv(MultiGridEnv):
         return False
 
     def _is_agent_on_assigned_goal(self, pos: Position, agent_index: int) -> int:
-        cell = self.init_grid.get(*pos)
-        if isinstance(cell, AgentGoal) and cell.accepting_agent_idx == agent_index:
-            return cell.goal_group
+        if isinstance(self.init_grid.get(*pos), AgentGoal):
+            cell: AgentGoal = self.init_grid.get(*pos)
+            if cell.accepting_agent_idx == agent_index:
+                return cell.goal_group
+            else:
+                return -1
         else:
             return -1
-
-    def _is_agent_on_unlocked_block(self, pos: Position) -> bool:
-        cell: WorldObjT | None = self.grid.get(*pos)
-
-        if isinstance(cell, Block) and not cell.locked:
-            return True
-        else:
-            return False
 
     def compute_reward(self, actions: NDArray[np.int_]) -> float:
         reward: float = 0
@@ -570,13 +591,13 @@ class LabyrinthEnv(MultiGridEnv):
             if self.obj_group_dict["goal"][goal_group_index].next_goal == "terminal":
                 reward += self.reward_config["all_agents_on_goal_reward"]
             elif self.obj_group_dict["goal"][goal_group_index].is_block_locked(
-                self.obj_group_dict
+                self.obj_group_dict["block"]
             ):
                 self.obj_group_dict["goal"][goal_group_index].open(
-                    self.obj_group_dict, self.grid
+                    self.obj_group_dict["block"], self.grid
                 )
                 self.obj_group_dict["goal"][goal_group_index].open(
-                    self.obj_group_dict, self.init_grid
+                    self.obj_group_dict["block"], self.init_grid
                 )
 
                 reward += self.reward_config["all_agents_on_goal_reward"]
@@ -598,10 +619,7 @@ class LabyrinthEnv(MultiGridEnv):
 
     def _agents_detected(self) -> bool:
         for zone in self.obj_group_dict["zone"].values():
-            if zone.call_action(
-                "detect_agents",
-                {"agents": self.agents, "random_generator": self.np_random},
-            ):
+            if zone.detect_agents(self.agents, self.np_random):
                 return True
             else:
                 pass
