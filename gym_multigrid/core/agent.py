@@ -160,7 +160,21 @@ class Agent(WorldObj):
         )
         # Rotate the agent based on its direction
         assert self.dir is not None
-        tri_fn = rotate_fn(tri_fn, cx=0.5, cy=0.5, theta=0.5 * math.pi * self.dir)
+
+        dir_vec: NDArray[np.int_] = self.dir_to_vec[self.dir]
+        orientation: int
+        if np.array_equal(dir_vec, np.array([1, 0])):
+            orientation = 0
+        elif np.array_equal(dir_vec, np.array([0, 1])):
+            orientation = 1
+        elif np.array_equal(dir_vec, np.array([-1, 0])):
+            orientation = 2
+        elif np.array_equal(dir_vec, np.array([0, -1])):
+            orientation = 3
+        else:
+            raise ValueError("Invalid direction vector")
+
+        tri_fn = rotate_fn(tri_fn, cx=0.5, cy=0.5, theta=0.5 * math.pi * orientation)
         fill_coords(
             img, tri_fn, c, self.world.COLORS[self.bg_color] if self.bg_color else None
         )
