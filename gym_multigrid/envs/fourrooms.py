@@ -50,8 +50,9 @@ class FourRooms(MultiGridEnv):
 
     def __init__(
         self,
-        env_seed: int = 0,
-        grid_size: tuple = (13, 13),
+        agent_pos=None,
+        goal_pos=None,
+        grid_size: tuple = (19, 19),
         agent_view_size: int = 7,
         max_steps: int = 100,
         highlight_visible_cells: bool | None = True,
@@ -66,13 +67,6 @@ class FourRooms(MultiGridEnv):
         ----------
 
         """
-        if env_seed < 0 or env_seed >= 2:
-            raise ValueError(
-                f"The Fourroom only accepts env_seed of 0 and 1, given {env_seed}"
-            )
-        else:
-            self.env_seed = env_seed
-
         self.width = grid_size[0]
         self.height = grid_size[1]
         self.grid_size = grid_size
@@ -80,6 +74,8 @@ class FourRooms(MultiGridEnv):
         self.world = FRWorld
         self.actions_set = FRActions
 
+        self._agent_default_pos = agent_pos
+        self._goal_default_pos = goal_pos
         see_through_walls: bool = False
 
         self.agents = [
@@ -91,19 +87,6 @@ class FourRooms(MultiGridEnv):
                 actions=self.actions_set,
                 type="agent",
             )
-        ]
-
-        self.doorway_positions = [(3, 6), (6, 2), (10, 6), (7, 9)]
-        self.vert_wall_positions = [(6, 0), (7, 6)]
-        self.hor_wall_positions = [(0, 6), (6, 6)]
-
-        self.goal_positions = [
-            (3, 9),
-            (7, 9),
-        ]  # (7, 1)
-        self.agent_positions = [
-            (9, 3),
-            (11, 1),
         ]
 
         self.grids = {}
@@ -137,25 +120,58 @@ class FourRooms(MultiGridEnv):
         room_w = width // 2
         room_h = height // 2
 
+        # # For each row of rooms
+        # for j in range(0, 2):
+        #     # For each column
+        #     for i in range(0, 2):
+        #         xL = i * room_w
+        #         yT = j * room_h
+        #         xR = xL + room_w
+        #         yB = yT + room_h
+
+        #         # Bottom wall and door
+        #         if i + 1 < 2:
+        #             self.grid.vert_wall(xR, yT, room_h)
+        # pos = (xR, self._rand_int(yT + 1, yB - 1))
+        # self.grid.set(*pos, None)
+
+        # # Bottom wall and door
+        # if j + 1 < 2:
+        #     self.grid.horz_wall(xL, yB, room_w)
+        # pos = (self._rand_int(xL + 1, xR - 1), yB)
+        # self.grid.set(*pos, None)
+
+        doorway_positions = [(3, 6), (6, 2), (10, 6), (7, 9)]
+        vert_wall_positions = [(6, 0), (7, 6)]
+        hor_wall_positions = [(0, 6), (6, 6)]
+
         # Bottom wall and door
-        for coord in self.vert_wall_positions:
+        for coord in vert_wall_positions:
             self.grid.vert_wall(coord[0], coord[1], room_h)
 
         # Bottom wall and door
-        for coord in self.hor_wall_positions:
+        for coord in hor_wall_positions:
             self.grid.horz_wall(coord[0], coord[1], room_w)
 
-        for pos in self.doorway_positions:
+        for pos in doorway_positions:
             self.grid.set(*pos, None)
 
-        # place goal
-        goal = Goal(self.world, 0)
-        self.put_obj(goal, *self.goal_positions[self.env_seed])
-        goal.init_pos, goal.cur_pos = self.goal_positions[self.env_seed]
+        # Randomize the player start position and orientation
+        if self._goal_default_pos is not None:
+            goal = Goal(self.world, 0)
+            self.put_obj(goal, *self._goal_default_pos)
+            goal.init_pos, goal.cur_pos = self._goal_default_pos
+        else:
+            self.place_obj(Goal(self.world, 0))
 
-        # place agent
-        for agent in self.agents:
-            self.place_agent(agent, pos=self.agent_positions[self.env_seed])
+        if self._agent_default_pos is not None:
+            for agent in self.agents:
+                self.place_agent(agent, pos=self._agent_default_pos)
+            # assuming random start direction
+            self.agent_dir = self._rand_int(0, 4)
+        else:
+            for agent in self.agents:
+                self.place_agent(agent)
 
     def reset(
         self,
@@ -164,13 +180,15 @@ class FourRooms(MultiGridEnv):
         options: dict | None = None,
     ):
         ### intentional to not feed seed since the grid and agent are fixed
-        obs, info = super().reset(seed=seed, options=options)
+        # obs = super().reset(seed=seed, options=options)
+        obs, info = super().reset(options=options)
 
         ### NOTE: not multiagent setting
+        self.agent_dir = self.agents[0].dir
         self.agent_pos = self.agents[0].pos
 
         ### NOTE: NOT MULTIAGENT SETTING
-        observations = {"image": obs[0]}
+        observations = {"image": obs[0], "direction": self.agent_dir}
         return observations, info
 
     def step(self, actions):
@@ -273,6 +291,7 @@ class FourRooms(MultiGridEnv):
                 assert False, "unknown action"
 
         ### NOTE: not multiagent setting
+        self.agent_dir = self.agents[0].dir
         self.agent_pos = self.agents[0].pos
 
         terminated = done
@@ -289,6 +308,6 @@ class FourRooms(MultiGridEnv):
         obs = [self.world.normalize_obs * ob for ob in obs]
 
         ### NOTE: not multiagent
-        observations = {"image": obs[0]}
+        observations = {"image": obs[0], "direction": self.agent_dir}
 
         return observations, rewards, terminated, truncated, {}
