@@ -419,7 +419,7 @@ class Block(WorldObj):
         self,
         world: WorldT,
     ):
-        super().__init__(world, "block", color="grey")
+        super().__init__(world, "block", color="light_grey")
 
         self.locked: bool = True
 
@@ -428,7 +428,7 @@ class Block(WorldObj):
 
     def open(self) -> None:
         self.locked = False
-        self.color = "light_grey"
+        self.color = "grey"
 
     def see_behind(self) -> bool:
         return False
