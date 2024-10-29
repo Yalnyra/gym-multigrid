@@ -12,7 +12,7 @@ from gym_multigrid.multigrid import MultiGridEnv
 from gym_multigrid.typing import Position
 
 
-class GoalConfig(TypedDict):
+class GoalGroupConfig(TypedDict):
     group_index: int
     pos: tuple[tuple[int, int], ...]
     valid_agent_indices: tuple[int, ...]
@@ -22,10 +22,11 @@ class GoalConfig(TypedDict):
     next_goal: int | Literal["terminal"]
 
 
-class ActionObjectConfig(TypedDict):
+class ObjectGroupConfig(TypedDict):
     obj_type: str
     group_index: int
     pos: tuple[tuple[int, int], ...]
+    obj_args: dict[str, Any]
 
 
 class RewardConfig(TypedDict):
@@ -35,7 +36,7 @@ class RewardConfig(TypedDict):
     all_agents_on_goal_reward: float
 
 
-goal_configs: list[GoalConfig] = [
+goal_group_config: list[GoalGroupConfig] = [
     {
         "group_index": 0,
         "pos": ((4, 1), (4, 2), (4, 3)),
@@ -74,13 +75,40 @@ goal_configs: list[GoalConfig] = [
     },
 ]
 
-action_obj_config: list[ActionObjectConfig] = [
-    {"obj_type": "block", "group_index": 0, "pos": ((5, 1), (5, 2), (5, 3))},
-    {"obj_type": "block", "group_index": 1, "pos": ((4, 5), (4, 6), (4, 7))},
+obj_group_config: list[ObjectGroupConfig] = [
+    {
+        "obj_type": "block",
+        "group_index": 0,
+        "pos": ((5, 1), (5, 2), (5, 3)),
+        "obj_args": {},
+    },
+    {
+        "obj_type": "block",
+        "group_index": 1,
+        "pos": ((4, 5), (4, 6), (4, 7)),
+        "obj_args": {},
+    },
     {
         "obj_type": "block",
         "group_index": 2,
         "pos": ((7, 2), (7, 3), (7, 4), (7, 5), (7, 6)),
+        "obj_args": {},
+    },
+    {
+        "obj_type": "detect_zone",
+        "group_index": 0,
+        "pos": ((2, 1), (2, 2), (2, 3)),
+        "obj_args": {"color": "blue", "visual_detect_prob": 0.005},
+    },
+    {
+        "obj_type": "detect_zone",
+        "group_index": 1,
+        "pos": ((2, 5), (2, 6), (2, 7)),
+        "obj_args": {
+            "color": "red",
+            "visual_detect_prob": 0.005,
+            "radio_detect_prob": 0.005,
+        },
     },
 ]
 
@@ -166,8 +194,8 @@ class LabyrinthEnv(MultiGridEnv):
         self,
         num_agents: int = 3,
         init_pos: list[tuple[int, int]] = [(1, 3), (1, 4), (1, 5)],
-        goal_configs: list[GoalConfig] = goal_configs,
-        action_obj_config: list[ActionObjectConfig] = action_obj_config,
+        goal_group_config: list[GoalGroupConfig] = goal_group_config,
+        obj_group_config: list[ObjectGroupConfig] = obj_group_config,
         reward_config: RewardConfig = reward_config,
         observation_option: Literal["final_goal", "all_goals"] = "final_goal",
         width: int | None = 9,
@@ -179,13 +207,13 @@ class LabyrinthEnv(MultiGridEnv):
         render_mode: Literal["human"] | Literal["rgb_array"] = "rgb_array",
     ) -> None:
         self.num_agents: int = num_agents
-        self.goal_configs: list[GoalConfig] = goal_configs
-        self.action_obj_config: list[ActionObjectConfig] = action_obj_config
+        self.goal_group_config: list[GoalGroupConfig] = goal_group_config
+        self.obj_group_config: list[ObjectGroupConfig] = obj_group_config
         self.reward_config: RewardConfig = reward_config
         self.observation_option: Literal["final_goal", "all_goals"] = observation_option
         self.init_pos: list[tuple[int, int], ...] = init_pos
 
-        agent_view_size: int = (7,)
+        agent_view_size: int = 7
         agents: list[Agent] = [
             Agent(world, i, agent_view_size, actions_set, agent_dir_to_vec)
             for i in range(num_agents)
@@ -211,7 +239,7 @@ class LabyrinthEnv(MultiGridEnv):
         self.final_goal: tuple[tuple[int, int], ...] = ()
         self.goals: list[tuple[tuple[int, int], ...]] = []
 
-        for goal_config in self.goal_configs:
+        for goal_config in self.goal_group_config:
             self.goals.append(goal_config["pos"])
             if goal_config["next_goal"] == "terminal":
                 self.final_goal = goal_config["pos"]
@@ -230,7 +258,7 @@ class LabyrinthEnv(MultiGridEnv):
                 )
             case "all_goals":
                 num_elements: int = self.num_agents + self.num_agents * len(
-                    self.goal_configs
+                    self.goal_group_config
                 )
                 observation_space = Box(
                     low=np.zeros(num_elements),
@@ -273,7 +301,7 @@ class LabyrinthEnv(MultiGridEnv):
         obj_group_dict: dict[str, dict[int, ObjectGroupT]] = {}
 
         # Place the goal objects
-        for goal_config in self.goal_configs:
+        for goal_config in self.goal_group_config:
             positions: tuple[tuple[int, int], ...] = goal_config["pos"]
             valid_agent_indices: tuple[int, ...] = goal_config["valid_agent_indices"]
             group_index: int = goal_config["group_index"]
@@ -300,18 +328,22 @@ class LabyrinthEnv(MultiGridEnv):
                 self.put_obj(goal, *pos)
 
         # Place blocks
-        for action_obj_config in self.action_obj_config:
-            obj_type: str = action_obj_config["obj_type"]
-            group_index: int = action_obj_config["group_index"]
-            positions: tuple[tuple[int, int], ...] = action_obj_config["pos"]
+        for obj_group_config in self.obj_group_config:
+            obj_type: str = obj_group_config["obj_type"]
+            group_index: int = obj_group_config["group_index"]
+            positions: tuple[tuple[int, int], ...] = obj_group_config["pos"]
 
-            obj_group_dict[obj_type] = {
-                group_index: BlockGroup(obj_type, group_index, positions)
-            }
+            match obj_type:
+                case "block":
+                    obj_group_dict[obj_type] = {
+                        group_index: BlockGroup(obj_type, group_index, positions)
+                    }
 
-            for pos in positions:
-                block = Block(self.world)
-                self.put_obj(block, *pos)
+                    for pos in positions:
+                        block = Block(self.world)
+                        self.put_obj(block, *pos)
+                case _:
+                    raise ValueError(f"Invalid object type: {obj_type}")
 
         self.obj_group_dict = obj_group_dict
 
