@@ -80,6 +80,20 @@ class NavigationActions(enum.IntEnum):
     up = 4
 
 
+NAV_DIR_TO_VEC: list[NDArray[np.int_]] = [
+    # Stay
+    np.array((0, 0)),
+    # Left
+    np.array((-1, 0)),
+    # Down
+    np.array((0, 1)),
+    # Right
+    np.array((1, 0)),
+    # Up
+    np.array((0, -1)),
+]
+
+
 AgentT = TypeVar("AgentT", bound="Agent")
 
 

@@ -2,9 +2,9 @@ from typing import Any, Literal, Type, TypedDict, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
-from gymnasium.spaces.box import Box
+from gymnasium.spaces import Box, MultiDiscrete
 
-from gym_multigrid.core.agent import NavigationActions, ActionsT, Agent
+from gym_multigrid.core.agent import NavigationActions, ActionsT, Agent, NAV_DIR_TO_VEC
 from gym_multigrid.core.grid import Grid
 from gym_multigrid.core.object import AgentGoal, Block, WorldObjT
 from gym_multigrid.core.world import WorldT, LabyrinthWorld
@@ -26,6 +26,13 @@ class ActionObjectConfig(TypedDict):
     obj_type: str
     group_index: int
     pos: tuple[tuple[int, int], ...]
+
+
+class RewardConfig(TypedDict):
+    movement_reward: float
+    agent_on_goal_reward: float
+    agent_move_away_from_goal_reward: float
+    all_agents_on_goal_reward: float
 
 
 goal_configs: list[GoalConfig] = [
@@ -76,6 +83,13 @@ action_obj_config: list[ActionObjectConfig] = [
         "pos": ((7, 2), (7, 3), (7, 4), (7, 5), (7, 6)),
     },
 ]
+
+reward_config: RewardConfig = {
+    "movement_reward": -0.02,
+    "agent_on_goal_reward": 0.2,
+    "agent_move_away_from_goal_reward": -0.3,
+    "all_agents_on_goal_reward": 1.0,
+}
 
 
 class ObjectGroup:
@@ -154,23 +168,27 @@ class LabyrinthEnv(MultiGridEnv):
         init_pos: list[tuple[int, int]] = [(1, 3), (1, 4), (1, 5)],
         goal_configs: list[GoalConfig] = goal_configs,
         action_obj_config: list[ActionObjectConfig] = action_obj_config,
+        reward_config: RewardConfig = reward_config,
         observation_option: Literal["final_goal", "all_goals"] = "final_goal",
         width: int | None = 9,
         height: int | None = 10,
         max_steps: int = 100,
         actions_set: type[ActionsT] = NavigationActions,
+        agent_dir_to_vec: list[NDArray[np.int_]] = NAV_DIR_TO_VEC,
         world: WorldT = LabyrinthWorld,
         render_mode: Literal["human"] | Literal["rgb_array"] = "rgb_array",
     ) -> None:
         self.num_agents: int = num_agents
         self.goal_configs: list[GoalConfig] = goal_configs
         self.action_obj_config: list[ActionObjectConfig] = action_obj_config
+        self.reward_config: RewardConfig = reward_config
         self.observation_option: Literal["final_goal", "all_goals"] = observation_option
         self.init_pos: list[tuple[int, int], ...] = init_pos
 
         agent_view_size: int = (7,)
         agents: list[Agent] = [
-            Agent(world, i, agent_view_size, actions_set) for i in range(num_agents)
+            Agent(world, i, agent_view_size, actions_set, agent_dir_to_vec)
+            for i in range(num_agents)
         ]
 
         uncached_object_types: list[str] = (["agent"],)
@@ -184,6 +202,10 @@ class LabyrinthEnv(MultiGridEnv):
             world=world,
             render_mode=render_mode,
             uncached_object_types=uncached_object_types,
+        )
+
+        self.action_space = MultiDiscrete(
+            [len(self.actions) for _ in range(self.num_agents)]
         )
 
         self.final_goal: tuple[tuple[int, int], ...] = ()
@@ -315,7 +337,7 @@ class LabyrinthEnv(MultiGridEnv):
         self.step_count += 1
         self._move_agents(actions)
         obs = self._get_obs()
-        reward: float = self.compute_reward()
+        reward: float = self.compute_reward(actions)
         terminated: bool = False
         truncated: bool = self.step_count >= self.max_steps
         info: dict[str, Any] = self._get_info()
@@ -334,19 +356,7 @@ class LabyrinthEnv(MultiGridEnv):
 
         assert agent.pos is not None
 
-        match action:
-            case self.actions.stay:
-                next_pos = agent.pos
-            case self.actions.left:
-                next_pos = agent.pos + np.array([-1, 0])
-            case self.actions.down:
-                next_pos = agent.pos + np.array([0, 1])
-            case self.actions.right:
-                next_pos = agent.pos + np.array([1, 0])
-            case self.actions.up:
-                next_pos = agent.pos + np.array([0, -1])
-            case _:
-                raise ValueError(f"Invalid action: {action}")
+        next_pos = agent.pos + agent.dir_vec[action]
 
         if (
             next_pos[0] < 0
@@ -379,10 +389,58 @@ class LabyrinthEnv(MultiGridEnv):
 
         return False
 
-    def _is_agent_on_unlocked_block(self, pos: Position) -> bool:
-        cell: WorldObjT | None = self.grid.get(*pos)
-
-        if cell is not None and cell.type == "block" and cell.is_unlocked:
+    def _is_agent_on_assigned_goal(self, pos: Position, agent_index: int) -> bool:
+        cell = self.grid.get(*pos)
+        if isinstance(cell, AgentGoal) and cell.agent_index == agent_index:
             return True
         else:
             return False
+
+    def _is_agent_on_unlocked_block(self, pos: Position) -> bool:
+        cell: WorldObjT | None = self.grid.get(*pos)
+
+        if isinstance(cell, Block) and not cell.locked:
+            return True
+        else:
+            return False
+
+    def compute_reward(self, actions: NDArray[np.int_]) -> float:
+        reward: float = 0
+
+        # 1. Movement penalty for each agent if an action is not "stay"
+        reward += self.reward_config["movement_reward"] * np.sum(actions != 0)
+
+        # 2. Reward for each agent if it is on its assigned goal
+        all_agents_on_assigned_goals: bool = True
+        for agent in self.agents:
+            if not self._is_agent_on_assigned_goal(agent.pos, agent.index):
+                all_agents_on_assigned_goals = False
+            else:
+                reward += self.reward_config["agent_on_goal_reward"]
+
+        # 3. Penalty for each agent if it moves away from its assigned goal though it was on it
+        for agent, action in zip(self.agents, actions):
+            prev_pos: Position = self._get_previous_agent_pos(action, agent)
+            if self._is_agent_on_assigned_goal(
+                prev_pos, agent.index
+            ) and not self._is_agent_on_assigned_goal(agent.pos, agent.index):
+                reward += self.reward_config["agent_move_away_from_goal_reward"]
+            else:
+                pass
+
+        # 4. Reward for all agents if they are on their assigned goals
+        if all_agents_on_assigned_goals:
+            reward += self.reward_config["all_agents_on_goal_reward"]
+        else:
+            pass
+
+        return reward
+
+    def _get_previous_agent_pos(self, action: int, agent: Agent) -> Position:
+        previous_pos: Position
+
+        assert agent.pos is not None
+
+        previous_pos = agent.pos - agent.dir_vec[action]
+
+        return previous_pos
