@@ -48,3 +48,49 @@ def test_check_door_0() -> None:
             break
 
     imageio.mimsave(animation_path, frames, loop=10)
+
+
+def test_check_door_1() -> None:
+
+    animation_path: str = "tests/out/animations/labyrinth_door_1.gif"
+
+    init_pos: tuple[tuple[int, int], ...] = ((2, 5), (2, 6), (2, 7))
+
+    env = LabyrinthEnv(init_pos=init_pos)
+    action = [env.actions.right, env.actions.right, env.actions.right]
+    obs, _ = env.reset()
+    frames = [env.render()]
+
+    for i in range(3):
+        obs, reward, terminated, truncated, info = env.step(action)
+        frames.append(env.render())
+        print(f"reward: {reward}")
+        print(f"terminated: {terminated}")
+        print(f"truncated: {truncated}")
+        if terminated or truncated:
+            break
+
+    imageio.mimsave(animation_path, frames, loop=10)
+
+
+def test_check_door_2() -> None:
+
+    animation_path: str = "tests/out/animations/labyrinth_door_2.gif"
+
+    init_pos: tuple[tuple[int, int], ...] = ((5, 3), (5, 4), (5, 5))
+
+    env = LabyrinthEnv(init_pos=init_pos)
+    action = [env.actions.right, env.actions.right, env.actions.right]
+    obs, _ = env.reset()
+    frames = [env.render()]
+
+    for i in range(3):
+        obs, reward, terminated, truncated, info = env.step(action)
+        frames.append(env.render())
+        print(f"reward: {reward}")
+        print(f"terminated: {terminated}")
+        print(f"truncated: {truncated}")
+        if terminated or truncated:
+            break
+
+    imageio.mimsave(animation_path, frames, loop=10)

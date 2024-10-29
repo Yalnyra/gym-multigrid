@@ -72,7 +72,7 @@ goal_group_config: list[GoalGroupConfig] = [
         "valid_agent_indices": (0, 1, 2),
         "called_actions": ["open"],
         "action_obj_type": "block",
-        "action_obj_group": 3,
+        "action_obj_group": -1,
         "next_goal": "terminal",
     },
 ]
@@ -184,7 +184,7 @@ class GoalGroup(ObjectGroup):
         self, obj_group_dict: dict[str, dict[int, ObjectGroupT]]
     ) -> bool:
         return obj_group_dict[self.action_obj_type][self.action_obj_group].call_action(
-            "is_locked", {}
+            "is_locked"
         )
 
 
@@ -452,7 +452,9 @@ class LabyrinthEnv(MultiGridEnv):
         self._move_agents(actions)
         obs = self._get_obs()
         reward: float = self.compute_reward(actions)
-        terminated: bool = self._agents_detected()
+        terminated: bool = (
+            self._agents_detected() | self._agents_reached_terminal_goal()
+        )
         truncated: bool = self.step_count >= self.max_steps
         info: dict[str, Any] = self._get_info()
 
@@ -508,6 +510,13 @@ class LabyrinthEnv(MultiGridEnv):
 
         return False
 
+    def _is_agent_on_terminal_goal(self, pos: Position) -> bool:
+        for goal_pos in self.final_goal:
+            if pos[0] == goal_pos[0] and pos[1] == goal_pos[1]:
+                return True
+
+        return False
+
     def _is_agent_on_assigned_goal(self, pos: Position, agent_index: int) -> int:
         cell = self.init_grid.get(*pos)
         if isinstance(cell, AgentGoal) and cell.accepting_agent_idx == agent_index:
@@ -558,14 +567,21 @@ class LabyrinthEnv(MultiGridEnv):
             agent_goal_statuses_np == agent_goal_statuses_np[0]
         ):
             goal_group_index: int = agent_goal_statuses[0]
-            if self.obj_group_dict["goal"][goal_group_index].is_block_locked(
+            if self.obj_group_dict["goal"][goal_group_index].next_goal == "terminal":
+                reward += self.reward_config["all_agents_on_goal_reward"]
+            elif self.obj_group_dict["goal"][goal_group_index].is_block_locked(
                 self.obj_group_dict
             ):
                 self.obj_group_dict["goal"][goal_group_index].open(
                     self.obj_group_dict, self.grid
                 )
+                self.obj_group_dict["goal"][goal_group_index].open(
+                    self.obj_group_dict, self.init_grid
+                )
 
                 reward += self.reward_config["all_agents_on_goal_reward"]
+            else:
+                pass
         else:
             pass
 
@@ -591,3 +607,14 @@ class LabyrinthEnv(MultiGridEnv):
                 pass
 
         return False
+
+    def _agents_reached_terminal_goal(self) -> bool:
+        for agent in self.agents:
+            if agent.pos is None:
+                return False
+            elif not self._is_agent_on_terminal_goal(agent.pos):
+                return False
+            else:
+                pass
+
+        return True
