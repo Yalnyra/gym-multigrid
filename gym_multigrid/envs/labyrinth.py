@@ -119,7 +119,7 @@ obj_group_config: list[ObjectGroupConfig] = [
 ]
 
 reward_config: RewardConfig = {
-    "reward_option": "intermediate_goal",
+    "reward_option": "final_goal",
     "movement_reward": -0.02,
     "agent_on_goal_reward": 0.2,
     "agent_move_away_from_goal_reward": -0.3,
@@ -299,6 +299,7 @@ class LabyrinthEnv(MultiGridEnv):
             self.goals.append(goal_config["pos"])
             if goal_config["next_goal"] == "terminal":
                 self.final_goal = goal_config["pos"]
+                self.final_goal_group_index = goal_config["group_index"]
 
     def _set_observation_space(self) -> Box:
         max_x: int = self.width - 1
@@ -566,18 +567,45 @@ class LabyrinthEnv(MultiGridEnv):
                 self._is_agent_on_assigned_goal(agent.pos, agent.index)
             )
 
-        reward += (
-            np.sum(np.array(agent_goal_statuses) != -1)
-            * self.reward_config["agent_on_goal_reward"]
-        )
+        match self.reward_config["reward_option"]:
+            case "final_goal":
+                reward += (
+                    np.sum(np.array(agent_goal_statuses) == self.final_goal_group_index)
+                    * self.reward_config["agent_on_goal_reward"]
+                )
+            case "intermediate_goal":
+                reward += (
+                    np.sum(np.array(agent_goal_statuses) != -1)
+                    * self.reward_config["agent_on_goal_reward"]
+                )
+            case _:
+                raise ValueError(
+                    f"Invalid reward option: {self.reward_config['reward_option']}"
+                )
 
         # 3. Penalty for each agent if it moves away from its assigned goal though it was on it
         for agent, action in zip(self.agents, actions):
             prev_pos: Position = self._get_previous_agent_pos(action, agent)
-            if self._is_agent_on_assigned_goal(
+            prev_agent_goal: int = self._is_agent_on_assigned_goal(
                 prev_pos, agent.index
-            ) and not self._is_agent_on_assigned_goal(agent.pos, agent.index):
-                reward += self.reward_config["agent_move_away_from_goal_reward"]
+            )
+            curr_agent_goal: int = self._is_agent_on_assigned_goal(
+                agent.pos, agent.index
+            )
+            if prev_agent_goal != -1 and prev_agent_goal != curr_agent_goal:
+                match self.reward_config["reward_option"]:
+                    case "final_goal":
+                        reward += (
+                            self.reward_config["agent_move_away_from_goal_reward"]
+                            if prev_agent_goal == self.final_goal_group_index
+                            else 0
+                        )
+                    case "intermediate_goal":
+                        reward += self.reward_config["agent_move_away_from_goal_reward"]
+                    case _:
+                        raise ValueError(
+                            f"Invalid reward option: {self.reward_config['reward_option']}"
+                        )
             else:
                 pass
 
@@ -588,8 +616,10 @@ class LabyrinthEnv(MultiGridEnv):
             agent_goal_statuses_np == agent_goal_statuses_np[0]
         ):
             goal_group_index: int = agent_goal_statuses[0]
+
             if self.obj_group_dict["goal"][goal_group_index].next_goal == "terminal":
                 reward += self.reward_config["all_agents_on_goal_reward"]
+
             elif self.obj_group_dict["goal"][goal_group_index].is_block_locked(
                 self.obj_group_dict["block"]
             ):
@@ -600,7 +630,15 @@ class LabyrinthEnv(MultiGridEnv):
                     self.obj_group_dict["block"], self.init_grid
                 )
 
-                reward += self.reward_config["all_agents_on_goal_reward"]
+                match self.reward_config["reward_option"]:
+                    case "final_goal":
+                        pass  # already given the reward
+                    case "intermediate_goal":
+                        reward += self.reward_config["all_agents_on_goal_reward"]
+                    case _:
+                        raise ValueError(
+                            f"Invalid reward option: {self.reward_config['reward_option']}"
+                        )
             else:
                 pass
         else:
