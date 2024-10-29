@@ -5,11 +5,11 @@ from numpy.typing import NDArray
 from gymnasium.spaces.box import Box
 
 from gym_multigrid.core.agent import NavigationActions, ActionsT, Agent
-from gym_multigrid.core.constants import TILE_PIXELS
 from gym_multigrid.core.grid import Grid
-from gym_multigrid.core.object import AgentGoal, Block
+from gym_multigrid.core.object import AgentGoal, Block, WorldObjT
 from gym_multigrid.core.world import WorldT, LabyrinthWorld
 from gym_multigrid.multigrid import MultiGridEnv
+from gym_multigrid.typing import Position
 
 
 class GoalConfig(TypedDict):
@@ -180,10 +180,19 @@ class LabyrinthEnv(MultiGridEnv):
             width=width,
             height=height,
             max_steps=max_steps,
+            actions_set=actions_set,
             world=world,
             render_mode=render_mode,
             uncached_object_types=uncached_object_types,
         )
+
+        self.final_goal: tuple[tuple[int, int], ...] = ()
+        self.goals: list[tuple[tuple[int, int], ...]] = []
+
+        for goal_config in self.goal_configs:
+            self.goals.append(goal_config["pos"])
+            if goal_config["next_goal"] == "terminal":
+                self.final_goal = goal_config["pos"]
 
     def _set_observation_space(self) -> Box:
         max_x: int = self.width - 1
@@ -264,11 +273,6 @@ class LabyrinthEnv(MultiGridEnv):
                 )
             }
 
-            if next_goal == "terminal":
-                self.final_goal: tuple[tuple[int, int], ...] = positions
-            else:
-                pass
-
             for pos, agent_index in zip(positions, valid_agent_indices):
                 goal = AgentGoal(self.world, agent_index)
                 self.put_obj(goal, *pos)
@@ -290,7 +294,7 @@ class LabyrinthEnv(MultiGridEnv):
         self.obj_group_dict = obj_group_dict
 
     def _get_obs(self) -> NDArray[np.int_]:
-        obs: list[list[int, int]] = []
+        obs: list[tuple[int, int]] = []
 
         for agent in self.agents:
             obs.extend(agent.pos)
@@ -298,5 +302,87 @@ class LabyrinthEnv(MultiGridEnv):
         match self.observation_option:
             case "final_goal":
                 obs.extend(self.final_goal)
+            case "all_goals":
+                for goal in self.goals:
+                    obs.extend(goal)
 
-        return np.array(obs)
+        return np.array(obs).flatten()
+
+    def step(
+        self,
+        actions: NDArray[np.int_],
+    ) -> tuple[NDArray[np.int_], float, bool, bool, dict[str, Any]]:
+        self.step_count += 1
+        self._move_agents(actions)
+        obs = self._get_obs()
+        reward: float = self.compute_reward()
+        terminated: bool = False
+        truncated: bool = self.step_count >= self.max_steps
+        info: dict[str, Any] = self._get_info()
+
+        return obs, reward, terminated, truncated, info
+
+    def _move_agents(self, actions: list[int]) -> None:
+        # Randomly generate the order of the agents by indices using self.np_random.
+        agent_indices: list[int] = list(range(self.num_agents))
+        self.np_random.shuffle(agent_indices)
+        for i in agent_indices:
+            self._move_agent(actions[i], self.agents[i])
+
+    def _move_agent(self, action: int, agent: Agent) -> None:
+        next_pos: Position
+
+        assert agent.pos is not None
+
+        match action:
+            case self.actions.stay:
+                next_pos = agent.pos
+            case self.actions.left:
+                next_pos = agent.pos + np.array([-1, 0])
+            case self.actions.down:
+                next_pos = agent.pos + np.array([0, 1])
+            case self.actions.right:
+                next_pos = agent.pos + np.array([1, 0])
+            case self.actions.up:
+                next_pos = agent.pos + np.array([0, -1])
+            case _:
+                raise ValueError(f"Invalid action: {action}")
+
+        if (
+            next_pos[0] < 0
+            or next_pos[1] < 0
+            or next_pos[0] >= self.width
+            or next_pos[1] >= self.height
+        ):
+            pass
+        else:
+            next_cell: WorldObjT | None = self.grid.get(*next_pos)
+
+            if self._is_agent_on_goal(next_pos):
+                bg_color: str = "yellow"
+            elif self._is_agent_on_unlocked_block(next_pos):
+                bg_color: str = "light_grey"
+            else:
+                bg_color = "white"
+
+            if next_cell is None:
+                agent.move(next_pos, self.grid, self.init_grid, bg_color=bg_color)
+            elif next_cell.can_overlap():
+                agent.move(next_pos, self.grid, self.init_grid, bg_color=bg_color)
+            else:
+                pass
+
+    def _is_agent_on_goal(self, pos: Position) -> bool:
+        for goal in self.goals:
+            if pos[0] == goal[0] and pos[1] == goal[1]:
+                return True
+
+        return False
+
+    def _is_agent_on_unlocked_block(self, pos: Position) -> bool:
+        cell: WorldObjT | None = self.grid.get(*pos)
+
+        if cell is not None and cell.type == "block" and cell.is_unlocked:
+            return True
+        else:
+            return False
