@@ -242,13 +242,27 @@ class LabyrinthEnv(MultiGridEnv):
     Multi-agent labyrinth env with multiple goals and zones.
 
     ## Observation
+    The format of the observation is a dictionary of each agent's observation with the agent's index as the key.
     - The observation is the positions of the final goal and agents if the observation option is "final_goal".
     - The observation is the positions of all the goals and agents if the observation option is "all_goals".
 
-    | Option        | Observation |
-    | ------------- | ----------- |
-    | "final_goal"  | [agent_0_x, agent_0_y, agent_1_x, agent_1_y, agent_2_x, agent_2_y, goal_0_x, goal_0_y, goal_1_x, goal_1_y, goal_2_x, goal_2_y]                        |
-    | "all_goals"   | [agent_0_x, agent_0_y, agent_1_x, agent_1_y, agent_2_x, agent_2_y, goal_0_x, goal_0_y, goal_1_x, goal_1_y, goal_2_x, goal_2_y, goal_3_x, goal_3_y]    |
+    ### Example
+    ``` python
+    # Observation option is "final_goal"
+    observation_space = Dict({
+        "0": Box(low=np.zeros(4), high=np.array([9, 8, 9, 8]), dtype=np.int_),
+        "1": Box(low=np.zeros(4), high=np.array([9, 8, 9, 8]), dtype=np.int_),
+        "2": Box(low=np.zeros(4), high=np.array([9, 8, 9, 8]), dtype=np.int_),
+    })
+
+    # Observation option is "all_goals"
+    observation_space = Dict({
+        "0": Box(low=np.zeros(10), high=np.array([9, 8] * 5), dtype=np.int_),
+        "1": Box(low=np.zeros(10), high=np.array([9, 8] * 5), dtype=np.int_),
+        "2": Box(low=np.zeros(10), high=np.array([9, 8] * 5), dtype=np.int_),
+    })
+    ```
+
 
     ## Actions
     - There are five actions: "stay", "up", "right", "down", and "left".
@@ -384,7 +398,7 @@ class LabyrinthEnv(MultiGridEnv):
         actions_set: type[ActionsT] = NavigationActions,
         agent_dir_to_vec: list[NDArray[np.int_]] = NAV_DIR_TO_VEC,
         world: WorldT = LabyrinthWorld,
-        render_mode: Literal["human"] | Literal["rgb_array"] = "rgb_array",
+        render_mode: Literal["human", "rgb_array"] = "rgb_array",
     ) -> None:
         """
         Constructor for the LabyrinthEnv class.
