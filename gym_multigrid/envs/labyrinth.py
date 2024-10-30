@@ -1,4 +1,4 @@
-from typing import Any, Literal, List, Tuple, TypedDict, Dict
+from typing import Any, Literal, List, Tuple, TypedDict, Dict, Union, Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -19,7 +19,7 @@ class GoalGroupConfig(TypedDict):
     called_actions: List[str]
     action_obj_type: str
     action_obj_group: int
-    next_goal: int | Literal["terminal"]
+    next_goal: Union[int, Literal["terminal"]]
 
 
 class ObjectGroupConfig(TypedDict):
@@ -167,14 +167,14 @@ class GoalGroup(ObjectGroup):
         called_actions: List[str],
         action_obj_type: str,
         action_obj_group: int,
-        next_goal: int | Literal["terminal"],
+        next_goal: Union[int, Literal["terminal"]],
     ) -> None:
         super().__init__(obj_type, group_index, pos)
         self.valid_agent_indices: Tuple[int, ...] = valid_agent_indices
         self.called_actions: List[str] = called_actions
         self.action_obj_type: str = action_obj_type
         self.action_obj_group: int = action_obj_group
-        self.next_goal: int | Literal["terminal"] = next_goal
+        self.next_goal: Union[int, Literal["terminal"]] = next_goal
 
     def agents_on_goals(self, agents: List[Agent]) -> bool:
         for pos, agent_index in zip(self.pos, self.valid_agent_indices):
@@ -421,7 +421,7 @@ class LabyrinthEnv(MultiGridEnv):
             - "called_actions": List[str] # Actions to call for the goal
             - "action_obj_type": str # Type of the object to call the action
             - "action_obj_group": int # Group index of the object to call the action
-            - "next_goal": int | "terminal" # Next goal group index or "terminal"
+            - "next_goal": Union[int, Literal["terminal"]] # Next goal group index or "terminal"
         obj_group_config : List[ObjectGroupConfig] = obj_group_config
             Configuration of the object groups.
             The following keys are required:
@@ -455,7 +455,7 @@ class LabyrinthEnv(MultiGridEnv):
             The length of the List should be equal to the number of actions in the actions set.
         world : WorldT = LabyrinthWorld
             World for the environment.
-        render_mode : Literal["human"] | Literal["rgb_array"] = "rgb_array"
+        render_mode : Literal["human", "rgb_array"] = "rgb_array"
             Render mode for the environment.
         """
         self.num_agents: int = num_agents
@@ -527,8 +527,8 @@ class LabyrinthEnv(MultiGridEnv):
     def reset(
         self,
         *,
-        seed: int | None = None,
-        options: Dict | None = None,
+        seed: Optional[int] = None,
+        options: Optional[Dict] = None,
     ) -> Tuple[NDArray[np.int_], Dict[str, Any]]:
         super().reset(seed=seed, options=options)
 
@@ -557,7 +557,7 @@ class LabyrinthEnv(MultiGridEnv):
             obj_type: str = "goal"
             action_obj_type: str = goal_config["action_obj_type"]
             action_obj_group: int = goal_config["action_obj_group"]
-            next_goal: int | Literal["terminal"] = goal_config["next_goal"]
+            next_goal: Union[int, Literal["terminal"]] = goal_config["next_goal"]
             called_actions: List[str] = goal_config["called_actions"]
 
             goal_dict[group_index] = GoalGroup(
@@ -696,7 +696,7 @@ class LabyrinthEnv(MultiGridEnv):
             action_probs = np.array(action_probs) / np.sum(action_probs)
 
             next_pos = self.np_random.choice(available_pos, p=action_probs)
-            next_cell: WorldObjT | None = self.grid.get(*next_pos)
+            next_cell: Union[WorldObjT, None] = self.grid.get(*next_pos)
             if next_cell is None:
                 agent.move(next_pos, self.grid, self.init_grid, bg_color=None)
             elif next_cell.can_overlap():
