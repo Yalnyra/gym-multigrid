@@ -241,7 +241,135 @@ class ObjectGroupDict(TypedDict):
 
 class LabyrinthEnv(MultiGridEnv):
     """
-    Multi-agent labyrinth env with multiple tasks.
+    # Labyrinth Environment
+    Multi-agent labyrinth env with multiple goals and zones.
+
+    ## Observation
+    - The observation is the positions of the final goal and agents if the observation option is "final_goal".
+    - The observation is the positions of all the goals and agents if the observation option is "all_goals".
+
+    | Option        | Observation |
+    | ------------- | ----------- |
+    | "final_goal"  | [agent_0_x, agent_0_y, agent_1_x, agent_1_y, agent_2_x, agent_2_y, goal_0_x, goal_0_y, goal_1_x, goal_1_y, goal_2_x, goal_2_y]                        |
+    | "all_goals"   | [agent_0_x, agent_0_y, agent_1_x, agent_1_y, agent_2_x, agent_2_y, goal_0_x, goal_0_y, goal_1_x, goal_1_y, goal_2_x, goal_2_y, goal_3_x, goal_3_y]    |
+
+    ## Actions
+    - There are five actions: "stay", "up", "right", "down", and "left".
+    - The action space is MultiDiscrete([5, 5, 5]) for three agents.
+
+    ## Reward
+    - Movement penalty for each agent if an action is not "stay".
+    - Reward for each agent if it is on its assigned goal.
+    - Penalty for each agent if it moves away from its assigned goal though it was on it.
+    - Reward for all agents if they are on their assigned goals on the same goal group and unlock the door.
+
+    These rewards are specified in the `reward_config` parameter.
+
+    ### Example
+    ``` python
+    class RewardConfig(TypedDict):
+        reward_option: Literal["final_goal", "intermediate_goal"]
+        movement_reward: float
+        agent_on_goal_reward: float
+        agent_move_away_from_goal_reward: float
+        all_agents_on_goal_reward: float
+
+    reward_config: RewardConfig = {
+        "reward_option": "final_goal",
+        "movement_reward": -0.02,
+        "agent_on_goal_reward": 0.2,
+        "agent_move_away_from_goal_reward": -0.3,
+        "all_agents_on_goal_reward": 1.0,
+    }
+    ```
+
+    ## Object Groups
+    - Goal objects: The goal objects are placed on the grid.
+    - Block objects: The block objects are placed on the grid.
+    - Zone objects: The zone objects are placed on the grid.
+
+    ### Example
+    ``` python
+    goal_group_config: list[GoalGroupConfig] = [
+        {
+            "group_index": 0,
+            "pos": ((4, 1), (4, 2), (4, 3)),
+            "valid_agent_indices": (0, 1, 2),
+            "called_actions": ["open"],
+            "action_obj_type": "block",
+            "action_obj_group": 0,
+            "next_goal": 2,
+        },
+        {
+            "group_index": 1,
+            "pos": ((3, 5), (3, 6), (3, 7)),
+            "valid_agent_indices": (0, 1, 2),
+            "called_actions": ["open"],
+            "action_obj_type": "block",
+            "action_obj_group": 1,
+            "next_goal": 2,
+        },
+        {
+            "group_index": 2,
+            "pos": ((6, 3), (6, 4), (6, 5)),
+            "valid_agent_indices": (0, 1, 2),
+            "called_actions": ["open"],
+            "action_obj_type": "block",
+            "action_obj_group": 2,
+            "next_goal": 3,
+        },
+        {
+            "group_index": 3,
+            "pos": ((8, 3), (8, 4), (8, 5)),
+            "valid_agent_indices": (0, 1, 2),
+            "called_actions": ["open"],
+            "action_obj_type": "block",
+            "action_obj_group": -1,
+            "next_goal": "terminal",
+        },
+    ]
+
+    obj_group_config: list[ObjectGroupConfig] = [
+        {
+            "obj_type": "block",
+            "group_index": 0,
+            "pos": ((5, 1), (5, 2), (5, 3)),
+            "obj_args": {},
+            "group_args": {},
+        },
+        {
+            "obj_type": "block",
+            "group_index": 1,
+            "pos": ((4, 5), (4, 6), (4, 7)),
+            "obj_args": {},
+            "group_args": {},
+        },
+        {
+            "obj_type": "block",
+            "group_index": 2,
+            "pos": ((7, 2), (7, 3), (7, 4), (7, 5), (7, 6)),
+            "obj_args": {},
+            "group_args": {},
+        },
+        {
+            "obj_type": "zone",
+            "group_index": 0,
+            "pos": ((2, 1), (2, 2), (2, 3)),
+            "obj_args": {"color": "blue"},
+            "group_args": {"visual_detect_prob": 0.005},
+        },
+        {
+            "obj_type": "zone",
+            "group_index": 1,
+            "pos": ((2, 5), (2, 6), (2, 7)),
+            "obj_args": {"color": "red"},
+            "group_args": {
+                "visual_detect_prob": 0.005,
+                "radio_detect_prob": 0.06,
+            },
+        },
+    ]
+    ```
     """
 
     def __init__(
