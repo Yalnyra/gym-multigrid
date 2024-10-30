@@ -2,7 +2,7 @@ import pytest
 
 import imageio
 
-from gym_multigrid.envs.labyrinth import LabyrinthEnv
+from gym_multigrid.envs.labyrinth import GoalGroupConfig, LabyrinthEnv
 
 
 def test_labyrinth() -> None:
@@ -94,3 +94,49 @@ def test_check_door_2() -> None:
             break
 
     imageio.mimsave(animation_path, frames, loop=10)
+
+
+def test_find_first_goal_groups() -> None:
+
+    goal_group_config: list[GoalGroupConfig] = [
+        {
+            "group_index": 0,
+            "pos": ((4, 1), (4, 2), (4, 3)),
+            "valid_agent_indices": (0, 1, 2),
+            "called_actions": ["open"],
+            "action_obj_type": "block",
+            "action_obj_group": 0,
+            "next_goal": 2,
+        },
+        {
+            "group_index": 1,
+            "pos": ((3, 5), (3, 6), (3, 7)),
+            "valid_agent_indices": (0, 1, 2),
+            "called_actions": ["open"],
+            "action_obj_type": "block",
+            "action_obj_group": 1,
+            "next_goal": 2,
+        },
+        {
+            "group_index": 2,
+            "pos": ((6, 3), (6, 4), (6, 5)),
+            "valid_agent_indices": (0, 1, 2),
+            "called_actions": ["open"],
+            "action_obj_type": "block",
+            "action_obj_group": 2,
+            "next_goal": 3,
+        },
+        {
+            "group_index": 3,
+            "pos": ((8, 3), (8, 4), (8, 5)),
+            "valid_agent_indices": (0, 1, 2),
+            "called_actions": ["open"],
+            "action_obj_type": "block",
+            "action_obj_group": -1,
+            "next_goal": "terminal",
+        },
+    ]
+    env = LabyrinthEnv(goal_group_config=goal_group_config)
+    first_goal_groups: list[int] = env._find_first_goal_groups()
+
+    assert first_goal_groups == [0, 1]

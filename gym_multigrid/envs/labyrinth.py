@@ -498,6 +498,8 @@ class LabyrinthEnv(MultiGridEnv):
                 self.final_goal = goal_config["pos"]
                 self.final_goal_group_index = goal_config["group_index"]
 
+        self.current_goal_group_indexes: List[int] = self._find_first_goal_groups()
+
     def _set_observation_space(self) -> spaces.Box:
         max_x: int = self.width - 1
         max_y: int = self.height - 1
@@ -523,6 +525,39 @@ class LabyrinthEnv(MultiGridEnv):
         )
 
         return observation_space
+
+    def _find_first_goal_groups(self) -> List[int]:
+        goal_group_config: List[GoalGroupConfig] = self.goal_group_config
+
+        # 1. Construct the graph of the goal groups
+        # Each tuple contains (goal_group_index, next_goal)
+        nodes: List[Tuple[int, Union[int, None]]] = []
+        final_nodes: List[tuple[int, Union[int, None]]] = []
+        for goal_group in goal_group_config:
+            if goal_group["next_goal"] == "terminal":
+                final_nodes.append((goal_group["group_index"], None))
+            else:
+                nodes.append((goal_group["group_index"], goal_group["next_goal"]))
+
+        # 2. Find the first goal groups from the final goal groups
+        while True:
+            next_nodes: List[Tuple[int, Union[int, None]]] = []
+            for node in nodes:
+                for final_node in final_nodes:
+                    if node[1] == final_node[0]:
+                        next_nodes.append(node)
+                    else:
+                        pass
+
+            # Remove duplicated nodes
+            next_nodes = list(set(next_nodes))
+
+            if len(next_nodes) == 0:
+                break
+            else:
+                final_nodes = next_nodes
+
+        return [node[0] for node in final_nodes]
 
     def reset(
         self,
