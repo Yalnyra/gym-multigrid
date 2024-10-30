@@ -117,7 +117,7 @@ obj_group_config: List[ObjectGroupConfig] = [
 ]
 
 reward_config: RewardConfig = {
-    "reward_option": "final_goal",
+    "reward_option": "intermediate_goal",
     "movement_reward": -0.02,
     "agent_on_goal_reward": 0.2,
     "agent_move_away_from_goal_reward": -0.3,
