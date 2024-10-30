@@ -666,9 +666,9 @@ class LabyrinthEnv(MultiGridEnv):
         actions: NDArray[np.int_],
     ) -> Tuple[NDArray[np.int_], float, bool, bool, Dict[str, Any]]:
         self.step_count += 1
-        self._move_agents(actions)
+        actual_actions: List[int] = self._move_agents(actions)
         obs = self._get_obs()
-        reward: float = self.compute_reward(actions)
+        reward: float = self.compute_reward(np.array(actual_actions))
         terminated: bool = (
             self._agents_detected() | self._agents_reached_terminal_goal()
         )
@@ -677,14 +677,47 @@ class LabyrinthEnv(MultiGridEnv):
 
         return obs, reward, terminated, truncated, info
 
-    def _move_agents(self, actions: List[int]) -> None:
+    def _move_agents(self, actions: List[int]) -> List[int]:
+        """
+        Move agents based on the actions.
+
+        Parameters
+        ----------
+        actions : List[int]
+            Actions to take.
+
+        Returns
+        -------
+        actual_actions : List[int]
+            Actual actions taken.
+        """
         # Randomly generate the order of the agents by indices using self.np_random.
         agent_indices: List[int] = list(range(self.num_agents))
+        actual_actions: List[int] = [0 for _ in range(self.num_agents)]
         self.np_random.shuffle(agent_indices)
         for i in agent_indices:
-            self._move_agent(actions[i], self.agents[i])
+            actual_action: int = self._move_agent(actions[i], self.agents[i])
+            actual_actions[i] = actual_action
 
-    def _move_agent(self, action: int, agent: Agent) -> None:
+        return actual_actions
+
+    def _move_agent(self, action: int, agent: Agent) -> int:
+        """
+        Move agents based on the action.
+
+        Parameters
+        ----------
+        action : int
+            Action to take.
+        agent : Agent
+            Agent to move.
+
+        Returns
+        -------
+        actual_action : int
+            Actual action taken.
+        """
+
         next_pos: Position
 
         assert agent.pos is not None
@@ -716,6 +749,11 @@ class LabyrinthEnv(MultiGridEnv):
             next_pos_index = self.np_random.choice(avail_pos_indices, p=action_probs)
             next_pos = available_pos[next_pos_index]
 
+            actual_action_vec: NDArray[np.int_] = next_pos - agent.pos
+            actual_action: int = np.where(
+                np.all(actual_action_vec == agent.dir_to_vec, axis=1)
+            )[0][0]
+
             next_cell: Union[WorldObjT, None] = self.grid.get(*next_pos)
             if next_cell is None:
                 agent.move(next_pos, self.grid, self.init_grid, bg_color=None)
@@ -728,7 +766,9 @@ class LabyrinthEnv(MultiGridEnv):
                     f"Invalid action f{action} and position f{next_pos} for agent {agent.index}. Available positions: {available_pos}"
                 )
         else:
-            pass
+            actual_action: int = self.actions.stay
+
+        return actual_action
 
     def _get_available_pos(self, agent: Agent) -> List[Position]:
         possible_pos: List[Position] = []
@@ -765,7 +805,10 @@ class LabyrinthEnv(MultiGridEnv):
     def _is_agent_on_assigned_goal(self, pos: Position, agent_index: int) -> int:
         if isinstance(self.init_grid.get(*pos), AgentGoal):
             cell: AgentGoal = self.init_grid.get(*pos)
-            if cell.accepting_agent_idx == agent_index:
+            if (
+                cell.goal_group in self.current_goal_group_indices
+                and cell.accepting_agent_idx == agent_index
+            ):
                 return cell.goal_group
             else:
                 return -1
@@ -786,7 +829,9 @@ class LabyrinthEnv(MultiGridEnv):
             )
 
         # 1. Movement penalty for each agent if an action is not "stay"
-        reward += self.reward_config["movement_reward"] * np.sum(actions != 0)
+        reward += self.reward_config["movement_reward"] * np.sum(
+            actions != self.actions.stay
+        )
 
         # 2. Reward for each agent if it is on its assigned goal
         agent_goal_statuses: List[int] = []
