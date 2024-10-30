@@ -587,6 +587,9 @@ class LabyrinthEnv(MultiGridEnv):
         # Place the goal objects
         obj_group_dict["goal"] = {}
         for goal_config in self.goal_group_config:
+            group_index: int = goal_config["group_index"]
+            positions: Tuple[Tuple[int, int], ...] = goal_config["pos"]
+
             obj_group_dict["goal"][group_index] = GoalGroup(**goal_config)
 
             for pos, agent_index in zip(positions, goal_config["valid_agent_indices"]):
@@ -676,7 +679,7 @@ class LabyrinthEnv(MultiGridEnv):
 
     def _move_agents(self, actions: List[int]) -> None:
         # Randomly generate the order of the agents by indices using self.np_random.
-        agent_indices: List[int] = List(range(self.num_agents))
+        agent_indices: List[int] = list(range(self.num_agents))
         self.np_random.shuffle(agent_indices)
         for i in agent_indices:
             self._move_agent(actions[i], self.agents[i])
@@ -708,8 +711,11 @@ class LabyrinthEnv(MultiGridEnv):
 
             # Normalize the action probabilities
             action_probs = np.array(action_probs) / np.sum(action_probs)
+            avail_pos_indices: List[int] = list(range(len(available_pos)))
 
-            next_pos = self.np_random.choice(available_pos, p=action_probs)
+            next_pos_index = self.np_random.choice(avail_pos_indices, p=action_probs)
+            next_pos = available_pos[next_pos_index]
+
             next_cell: Union[WorldObjT, None] = self.grid.get(*next_pos)
             if next_cell is None:
                 agent.move(next_pos, self.grid, self.init_grid, bg_color=None)
