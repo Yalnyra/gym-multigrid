@@ -71,8 +71,6 @@ goal_group_config: List[GoalGroupConfig] = [
         "pos": ((8, 3), (8, 4), (8, 5)),
         "valid_agent_indices": (0, 1, 2),
         "called_actions": ["open"],
-        "action_obj_type": "block",
-        "action_obj_group": -1,
         "next_goal": "terminal",
     },
 ]
@@ -160,20 +158,20 @@ class BlockGroup(ObjectGroup):
 class GoalGroup(ObjectGroup):
     def __init__(
         self,
-        obj_type: str,
         group_index: int,
         pos: Tuple[Tuple[int, int], ...],
         valid_agent_indices: Tuple[int, ...],
         called_actions: List[str],
-        action_obj_type: str,
-        action_obj_group: int,
         next_goal: Union[int, Literal["terminal"]],
+        action_obj_type: Optional[str] = None,
+        action_obj_group: Optional[int] = None,
     ) -> None:
+        obj_type: str = "goal"
         super().__init__(obj_type, group_index, pos)
         self.valid_agent_indices: Tuple[int, ...] = valid_agent_indices
         self.called_actions: List[str] = called_actions
-        self.action_obj_type: str = action_obj_type
-        self.action_obj_group: int = action_obj_group
+        self.action_obj_type: Optional[str] = action_obj_type
+        self.action_obj_group: Optional[int] = action_obj_group
         self.next_goal: Union[int, Literal["terminal"]] = next_goal
 
     def agents_on_goals(self, agents: List[Agent]) -> bool:
@@ -192,7 +190,10 @@ class GoalGroup(ObjectGroup):
         block_group_dict[self.action_obj_group].open(grid)
 
     def is_block_locked(self, block_group_dict: Dict[int, BlockGroup]) -> bool:
-        return block_group_dict[self.action_obj_group].is_locked()
+        if self.action_obj_group is None:
+            return False
+        else:
+            return block_group_dict[self.action_obj_group].is_locked()
 
 
 class ZoneGroup(ObjectGroup):
@@ -498,13 +499,11 @@ class LabyrinthEnv(MultiGridEnv):
                 self.final_goal = goal_config["pos"]
                 self.final_goal_group_index = goal_config["group_index"]
 
-        self.current_goal_group_indexes: List[int] = self._find_first_goal_groups()
+        self.init_goal_group_indices: List[int] = self._find_first_goal_groups()
 
     def _set_observation_space(self) -> spaces.Box:
         max_x: int = self.width - 1
         max_y: int = self.height - 1
-
-        num_agents: int = self.num_agents
 
         if self.observation_option == "final_goal":
             num_goals: int = 1
@@ -520,7 +519,7 @@ class LabyrinthEnv(MultiGridEnv):
                     high=np.array([max_x, max_y] * (num_goals + 1)),
                     dtype=np.int_,
                 )
-                for i in range(num_agents)
+                for i in range(self.num_agents)
             }
         )
 
@@ -532,7 +531,7 @@ class LabyrinthEnv(MultiGridEnv):
         # 1. Construct the graph of the goal groups
         # Each tuple contains (goal_group_index, next_goal)
         nodes: List[Tuple[int, Union[int, None]]] = []
-        final_nodes: List[tuple[int, Union[int, None]]] = []
+        final_nodes: List[Tuple[int, Union[int, None]]] = []
         for goal_group in goal_group_config:
             if goal_group["next_goal"] == "terminal":
                 final_nodes.append((goal_group["group_index"], None))
@@ -567,6 +566,8 @@ class LabyrinthEnv(MultiGridEnv):
     ) -> Tuple[NDArray[np.int_], Dict[str, Any]]:
         super().reset(seed=seed, options=options)
 
+        self.current_goal_group_indices: List[int] = self.init_goal_group_indices
+
         obs = self._get_obs()
         info: Dict[str, Any] = self._get_info()
 
@@ -584,33 +585,13 @@ class LabyrinthEnv(MultiGridEnv):
         obj_group_dict: ObjectGroupDict = {}
 
         # Place the goal objects
-        goal_dict: Dict[int, GoalGroup] = {}
+        obj_group_dict["goal"] = {}
         for goal_config in self.goal_group_config:
-            positions: Tuple[Tuple[int, int], ...] = goal_config["pos"]
-            valid_agent_indices: Tuple[int, ...] = goal_config["valid_agent_indices"]
-            group_index: int = goal_config["group_index"]
-            obj_type: str = "goal"
-            action_obj_type: str = goal_config["action_obj_type"]
-            action_obj_group: int = goal_config["action_obj_group"]
-            next_goal: Union[int, Literal["terminal"]] = goal_config["next_goal"]
-            called_actions: List[str] = goal_config["called_actions"]
+            obj_group_dict["goal"][group_index] = GoalGroup(**goal_config)
 
-            goal_dict[group_index] = GoalGroup(
-                obj_type,
-                group_index,
-                positions,
-                valid_agent_indices,
-                called_actions,
-                action_obj_type,
-                action_obj_group,
-                next_goal,
-            )
-
-            for pos, agent_index in zip(positions, valid_agent_indices):
+            for pos, agent_index in zip(positions, goal_config["valid_agent_indices"]):
                 goal = AgentGoal(self.world, agent_index, group_index, color="green")
                 self.put_obj(goal, *pos)
-
-        obj_group_dict["goal"] = goal_dict
 
         # Place blocks
         obj_group_dict["block"] = {}
@@ -620,35 +601,33 @@ class LabyrinthEnv(MultiGridEnv):
             group_index: int = obj_group_config["group_index"]
             positions: Tuple[Tuple[int, int], ...] = obj_group_config["pos"]
 
-            match obj_type:
-                case "block":
-                    obj_group_dict[obj_type][group_index] = BlockGroup(
-                        obj_type, group_index, positions
-                    )
+            if obj_type == "block":
+                obj_group_dict[obj_type][group_index] = BlockGroup(
+                    obj_type, group_index, positions
+                )
 
-                    for pos in positions:
-                        block = Block(self.world)
-                        self.put_obj(block, *pos)
+                for pos in positions:
+                    block = Block(self.world)
+                    self.put_obj(block, *pos)
 
-                case "zone":
-                    color: str = obj_group_config["obj_args"]["color"]
-                    args: Dict[str, Any] = (
-                        obj_group_config["group_args"] | obj_group_config["obj_args"]
-                    )
+            elif obj_type == "zone":
+                color: str = obj_group_config["obj_args"]["color"]
+                args: Dict[str, Any] = (
+                    obj_group_config["group_args"] | obj_group_config["obj_args"]
+                )
+                obj_group_dict[obj_type][group_index] = ZoneGroup(
+                    obj_type,
+                    group_index,
+                    positions,
+                    **args,
+                )
 
-                    obj_group_dict[obj_type][group_index] = ZoneGroup(
-                        obj_type,
-                        group_index,
-                        positions,
-                        **args,
-                    )
+                for pos in positions:
+                    zone = Zone(self.world, f"{color}", f"{color}_zone")
+                    self.put_obj(zone, *pos)
 
-                    for pos in positions:
-                        zone = Zone(self.world, f"{color}", f"{color}_zone")
-                        self.put_obj(zone, *pos)
-
-                case _:
-                    raise ValueError(f"Invalid object type: {obj_type}")
+            else:
+                raise ValueError(f"Invalid object type: {obj_type}")
 
         self.obj_group_dict = obj_group_dict
 
@@ -790,118 +769,81 @@ class LabyrinthEnv(MultiGridEnv):
     def compute_reward(self, actions: NDArray[np.int_]) -> float:
         reward: float = 0
 
+        # Change the targeted goals based on the reward option
         if self.reward_config["reward_option"] == "final_goal":
-            # 1. Movement penalty for each agent if an action is not "stay"
-            reward += self.reward_config["movement_reward"] * np.sum(actions != 0)
-
-            # 2. Reward for each agent if it is on its assigned goal
-            agent_goal_statuses: List[int] = []
-            for agent in self.agents:
-                agent_goal_statuses.append(
-                    self._is_agent_on_assigned_goal(agent.pos, agent.index)
-                )
-
-            reward += (
-                np.sum(np.array(agent_goal_statuses) == self.final_goal_group_index)
-                * self.reward_config["agent_on_goal_reward"]
-            )
-
-            # 3. Penalty for each agent if it moves away from its assigned goal though it was on it
-            for agent, action in zip(self.agents, actions):
-                prev_pos: Position = self._get_previous_agent_pos(action, agent)
-                prev_agent_goal: int = self._is_agent_on_assigned_goal(
-                    prev_pos, agent.index
-                )
-                curr_agent_goal: int = self._is_agent_on_assigned_goal(
-                    agent.pos, agent.index
-                )
-                if prev_agent_goal != -1 and prev_agent_goal != curr_agent_goal:
-                    reward += (
-                        self.reward_config["agent_move_away_from_goal_reward"]
-                        if prev_agent_goal == self.final_goal_group_index
-                        else 0
-                    )
-                else:
-                    pass
-
-            # 4. Reward for all agents if they are on their assigned goals on the same goal group and unlock the door
-            # If the door is already unlocked, the reward is not given.
-            if np.all(np.array(agent_goal_statuses) == self.final_goal_group_index):
-                reward += self.reward_config["all_agents_on_goal_reward"]
-            else:
-                pass
-
+            targeted_goals: List[int] = [self.final_goal_group_index]
         elif self.reward_config["reward_option"] == "intermediate_goal":
-            # 1. Movement penalty for each agent if an action is not "stay"
-            reward += self.reward_config["movement_reward"] * np.sum(actions != 0)
-
-            # 2. Reward for each agent if it is on its assigned goal
-            agent_goal_statuses: List[int] = []
-            for agent in self.agents:
-                agent_goal_statuses.append(
-                    self._is_agent_on_assigned_goal(agent.pos, agent.index)
-                )
-            reward += (
-                np.sum(np.array(agent_goal_statuses) != -1)
-                * self.reward_config["agent_on_goal_reward"]
-            )
-
-            # 3. Penalty for each agent if it moves away from its assigned goal though it was on it.
-            # This penalty is given only if the agent was
-            for agent, action in zip(self.agents, actions):
-                prev_pos: Position = self._get_previous_agent_pos(action, agent)
-                prev_agent_goal: int = self._is_agent_on_assigned_goal(
-                    prev_pos, agent.index
-                )
-                curr_agent_goal: int = self._is_agent_on_assigned_goal(
-                    agent.pos, agent.index
-                )
-                if prev_agent_goal != -1 and prev_agent_goal != curr_agent_goal:
-                    reward += self.reward_config["agent_move_away_from_goal_reward"]
-                else:
-                    pass
-
-            # 4. Reward for all agents if they are on their assigned goals on the same goal group and unlock the door
-            # If the door is already unlocked, the reward is not given.
-            agent_goal_statuses_np: NDArray[np.int_] = np.array(agent_goal_statuses)
-            if np.all(agent_goal_statuses_np != -1) and np.all(
-                agent_goal_statuses_np == agent_goal_statuses_np[0]
-            ):
-                goal_group_index: int = agent_goal_statuses[0]
-
-                if (
-                    self.obj_group_dict["goal"][goal_group_index].next_goal
-                    == "terminal"
-                ):
-                    reward += self.reward_config["all_agents_on_goal_reward"]
-
-                elif self.obj_group_dict["goal"][goal_group_index].is_block_locked(
-                    self.obj_group_dict["block"]
-                ):
-                    self.obj_group_dict["goal"][goal_group_index].open(
-                        self.obj_group_dict["block"], self.grid
-                    )
-                    self.obj_group_dict["goal"][goal_group_index].open(
-                        self.obj_group_dict["block"], self.init_grid
-                    )
-
-                    match self.reward_config["reward_option"]:
-                        case "final_goal":
-                            pass  # already given the reward
-                        case "intermediate_goal":
-                            reward += self.reward_config["all_agents_on_goal_reward"]
-                        case _:
-                            raise ValueError(
-                                f"Invalid reward option: {self.reward_config['reward_option']}"
-                            )
-                else:
-                    pass
-            else:
-                pass
-
+            targeted_goals: List[int] = self.current_goal_group_indices
         else:
             raise ValueError(
                 f"Invalid reward option: {self.reward_config['reward_option']}"
+            )
+
+        # 1. Movement penalty for each agent if an action is not "stay"
+        reward += self.reward_config["movement_reward"] * np.sum(actions != 0)
+
+        # 2. Reward for each agent if it is on its assigned goal
+        agent_goal_statuses: List[int] = []
+        for agent in self.agents:
+            agent_goal_statuses.append(
+                self._is_agent_on_assigned_goal(agent.pos, agent.index)
+            )
+
+        num_goaled_agents: int = 0
+        for agent_goal_status in agent_goal_statuses:
+            if agent_goal_status in targeted_goals:
+                num_goaled_agents += 1
+            else:
+                pass
+
+        reward += num_goaled_agents * self.reward_config["agent_on_goal_reward"]
+
+        # 3. Penalty for each agent if it moves away from its assigned goal though it was on it
+        for agent, action in zip(self.agents, actions):
+            prev_pos: Position = self._get_previous_agent_pos(action, agent)
+            prev_agent_goal: int = self._is_agent_on_assigned_goal(
+                prev_pos, agent.index
+            )
+            curr_agent_goal: int = self._is_agent_on_assigned_goal(
+                agent.pos, agent.index
+            )
+
+            # If the reward option is "final_goal", the penalty is given only if the agent was on the final goal.
+            if prev_agent_goal in targeted_goals and prev_agent_goal != curr_agent_goal:
+                reward += self.reward_config["agent_move_away_from_goal_reward"]
+            else:
+                pass
+
+        # 4. Reward for all agents if they are on their assigned goals on the same goal group and unlock the door
+        # If the door is already unlocked, the reward is not given.
+        if (
+            np.all(np.array(agent_goal_statuses) == agent_goal_statuses[0])
+            and agent_goal_statuses[0] in self.current_goal_group_indices
+        ):
+            goal_group_index: int = agent_goal_statuses[0]
+
+            if self.obj_group_dict["goal"][goal_group_index].is_block_locked(
+                self.obj_group_dict["block"]
+            ):
+                self.obj_group_dict["goal"][goal_group_index].open(
+                    self.obj_group_dict["block"], self.grid
+                )
+                self.obj_group_dict["goal"][goal_group_index].open(
+                    self.obj_group_dict["block"], self.init_grid
+                )
+
+                self.current_goal_group_indices = [
+                    self.obj_group_dict["goal"][goal_group_index].next_goal
+                ]
+
+            else:
+                pass
+
+            # The reward is given only if all the agents are on the target goal group.
+            reward += (
+                self.reward_config["all_agents_on_goal_reward"]
+                if goal_group_index in targeted_goals
+                else 0
             )
 
         return reward
