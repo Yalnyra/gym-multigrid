@@ -1,8 +1,9 @@
+import numpy as np
 import pytest
 
 import imageio
 
-from gym_multigrid.envs.labyrinth import GoalGroupConfig, LabyrinthEnv
+from gym_multigrid.envs.labyrinth import GoalGroupConfig, LabyrinthEnv, RewardConfig
 
 
 def test_labyrinth() -> None:
@@ -140,3 +141,373 @@ def test_find_first_goal_groups() -> None:
     first_goal_groups: list[int] = env._find_first_goal_groups()
 
     assert first_goal_groups == [0, 1]
+
+
+def test_compute_reward_final_goal_agent_on_goal():
+    reward_config: RewardConfig = {
+        "reward_option": "final_goal",
+        "movement_reward": -0.02,
+        "agent_on_goal_reward": 0.2,
+        "agent_move_away_from_goal_reward": -0.3,
+        "all_agents_on_goal_reward": 1.0,
+    }
+
+    init_pos: tuple[tuple[int, int], ...] = ((7, 3), (7, 4), (7, 5))
+    p_intended_action: float = 1
+    env = LabyrinthEnv(
+        p_intended_action=p_intended_action,
+        reward_config=reward_config,
+        init_pos=init_pos,
+    )
+
+    action = [env.actions.right, env.actions.right, env.actions.right]
+
+    obs, _ = env.reset()
+    env.current_goal_group_indices = [env.final_goal_group_index]
+    rewards: list[int] = []
+    frames = [env.render()]
+
+    for i in range(1):
+        obs, reward, terminated, truncated, info = env.step(action)
+        rewards.append(reward)
+        print(f"reward: {reward}")
+        print(f"terminated: {terminated}")
+        print(f"truncated: {truncated}")
+        frames.append(env.render())
+        if terminated or truncated:
+            break
+
+    imageio.mimsave(
+        "tests/out/animations/labyrinth_compute_reward_final_goal_agent_on_goal.gif",
+        frames,
+        loop=10,
+    )
+
+    assert rewards == [
+        reward_config["movement_reward"] * 3
+        + reward_config["agent_on_goal_reward"] * 3
+        + reward_config["all_agents_on_goal_reward"]
+    ]
+    assert terminated
+
+
+def test_compute_reward_intermediate_goal_agent_on_goal_2_right():
+    reward_config: RewardConfig = {
+        "reward_option": "intermediate_goal",
+        "movement_reward": -0.02,
+        "agent_on_goal_reward": 0.2,
+        "agent_move_away_from_goal_reward": -0.3,
+        "all_agents_on_goal_reward": 1.0,
+    }
+
+    init_pos: tuple[tuple[int, int], ...] = ((5, 3), (5, 4), (5, 5))
+    p_intended_action: float = 1
+    env = LabyrinthEnv(
+        p_intended_action=p_intended_action,
+        reward_config=reward_config,
+        init_pos=init_pos,
+    )
+
+    action = [env.actions.right, env.actions.right, env.actions.right]
+
+    obs, _ = env.reset()
+    env.current_goal_group_indices = [2]
+    rewards: list[int] = []
+    frames = [env.render()]
+
+    for i in range(2):
+        obs, reward, terminated, truncated, info = env.step(action)
+        rewards.append(reward)
+        print(f"reward: {reward}")
+        print(f"terminated: {terminated}")
+        print(f"truncated: {truncated}")
+        frames.append(env.render())
+        if terminated or truncated:
+            break
+
+    imageio.mimsave(
+        "tests/out/animations/labyrinth_compute_reward_intermediate_goal_agent_on_goal_2_right.gif",
+        frames,
+        loop=10,
+    )
+
+    assert rewards == [
+        reward_config["movement_reward"] * 3
+        + reward_config["agent_on_goal_reward"] * 3
+        + reward_config["all_agents_on_goal_reward"],  # 1st step
+        reward_config["movement_reward"] * 3,  # 2nd step
+    ]
+
+
+def test_compute_reward_intermediate_goal_agent_on_goal_2_stay():
+    reward_config: RewardConfig = {
+        "reward_option": "intermediate_goal",
+        "movement_reward": -0.02,
+        "agent_on_goal_reward": 0.2,
+        "agent_move_away_from_goal_reward": -0.3,
+        "all_agents_on_goal_reward": 1.0,
+    }
+
+    init_pos: tuple[tuple[int, int], ...] = ((5, 3), (5, 4), (5, 5))
+    p_intended_action: float = 1
+    env = LabyrinthEnv(
+        p_intended_action=p_intended_action,
+        reward_config=reward_config,
+        init_pos=init_pos,
+    )
+
+    actions = [
+        [env.actions.right, env.actions.right, env.actions.right],
+        [env.actions.stay, env.actions.stay, env.actions.stay],
+    ]
+    obs, _ = env.reset()
+    env.current_goal_group_indices = [2]
+    rewards: list[int] = []
+    frames = [env.render()]
+
+    for action in actions:
+        obs, reward, terminated, truncated, info = env.step(action)
+        rewards.append(reward)
+        print(f"reward: {reward}")
+        print(f"terminated: {terminated}")
+        print(f"truncated: {truncated}")
+        frames.append(env.render())
+        if terminated or truncated:
+            break
+
+    imageio.mimsave(
+        "tests/out/animations/labyrinth_compute_reward_intermediate_goal_agent_on_goal_2_right.gif",
+        frames,
+        loop=10,
+    )
+
+    assert rewards == [
+        reward_config["movement_reward"] * 3
+        + reward_config["agent_on_goal_reward"] * 3
+        + reward_config["all_agents_on_goal_reward"],  # 1st step
+        0,  # 2nd step
+    ]
+
+
+def test_compute_reward_intermediate_goal_agent_on_goal_3():
+    reward_config: RewardConfig = {
+        "reward_option": "intermediate_goal",
+        "movement_reward": -0.02,
+        "agent_on_goal_reward": 0.2,
+        "agent_move_away_from_goal_reward": -0.3,
+        "all_agents_on_goal_reward": 1.0,
+    }
+
+    init_pos: tuple[tuple[int, int], ...] = ((7, 3), (7, 4), (7, 5))
+    p_intended_action: float = 1
+    env = LabyrinthEnv(
+        p_intended_action=p_intended_action,
+        reward_config=reward_config,
+        init_pos=init_pos,
+    )
+
+    action = [env.actions.right, env.actions.right, env.actions.right]
+
+    obs, _ = env.reset()
+    env.current_goal_group_indices = [env.final_goal_group_index]
+    rewards: list[int] = []
+    frames = [env.render()]
+
+    for i in range(1):
+        obs, reward, terminated, truncated, info = env.step(action)
+        rewards.append(reward)
+        print(f"reward: {reward}")
+        print(f"terminated: {terminated}")
+        print(f"truncated: {truncated}")
+        frames.append(env.render())
+        if terminated or truncated:
+            break
+
+    imageio.mimsave(
+        "tests/out/animations/labyrinth_compute_reward_intermediate_goal_agent_on_goal_3.gif",
+        frames,
+        loop=10,
+    )
+
+    assert rewards == [
+        reward_config["movement_reward"] * 3
+        + reward_config["agent_on_goal_reward"] * 3
+        + reward_config["all_agents_on_goal_reward"]
+    ]
+    assert terminated
+
+
+def test_compute_reward_intermediate_goal_move_away() -> None:
+    reward_config: RewardConfig = {
+        "reward_option": "intermediate_goal",
+        "movement_reward": -0.02,
+        "agent_on_goal_reward": 0.2,
+        "agent_move_away_from_goal_reward": -0.3,
+        "all_agents_on_goal_reward": 1.0,
+    }
+
+    init_pos: tuple[tuple[int, int], ...] = ((4, 1), (4, 2), (3, 3))
+    p_intended_action: float = 1
+    env = LabyrinthEnv(
+        p_intended_action=p_intended_action,
+        reward_config=reward_config,
+        init_pos=init_pos,
+    )
+
+    action = [env.actions.left, env.actions.left, env.actions.stay]
+
+    obs, _ = env.reset()
+    env.current_goal_group_indices = [0]
+    rewards: list[int] = []
+    frames = [env.render()]
+
+    for i in range(1):
+        obs, reward, terminated, truncated, info = env.step(action)
+        rewards.append(np.round(reward, 2))
+        print(f"reward: {reward}")
+        print(f"terminated: {terminated}")
+        print(f"truncated: {truncated}")
+        frames.append(env.render())
+        if terminated or truncated:
+            break
+
+    imageio.mimsave(
+        "tests/out/animations/labyrinth_compute_reward_intermediate_goal_move_away.gif",
+        frames,
+        loop=10,
+    )
+
+    assert rewards == [
+        reward_config["movement_reward"] * 2
+        + reward_config["agent_move_away_from_goal_reward"] * 2
+    ]
+
+
+def test_compute_reward_final_goal_move_away() -> None:
+    reward_config: RewardConfig = {
+        "reward_option": "final_goal",
+        "movement_reward": -0.02,
+        "agent_on_goal_reward": 0.2,
+        "agent_move_away_from_goal_reward": -0.3,
+        "all_agents_on_goal_reward": 1.0,
+    }
+
+    init_pos: tuple[tuple[int, int], ...] = ((4, 1), (4, 2), (3, 3))
+    p_intended_action: float = 1
+    env = LabyrinthEnv(
+        p_intended_action=p_intended_action,
+        reward_config=reward_config,
+        init_pos=init_pos,
+    )
+
+    action = [env.actions.left, env.actions.left, env.actions.stay]
+
+    obs, _ = env.reset()
+    rewards: list[int] = []
+    frames = [env.render()]
+
+    for i in range(1):
+        obs, reward, terminated, truncated, info = env.step(action)
+        rewards.append(np.round(reward, 2))
+        print(f"reward: {reward}")
+        print(f"terminated: {terminated}")
+        print(f"truncated: {truncated}")
+        frames.append(env.render())
+        if terminated or truncated:
+            break
+
+    imageio.mimsave(
+        "tests/out/animations/labyrinth_compute_reward_intermediate_goal_move_away.gif",
+        frames,
+        loop=10,
+    )
+
+    assert rewards == [reward_config["movement_reward"] * 2]
+
+
+def test_compute_rewards_intermediate_goal_agent_on_goal_0() -> None:
+    reward_config: RewardConfig = {
+        "reward_option": "intermediate_goal",
+        "movement_reward": -0.02,
+        "agent_on_goal_reward": 0.2,
+        "agent_move_away_from_goal_reward": -0.3,
+        "all_agents_on_goal_reward": 1.0,
+    }
+
+    init_pos: tuple[tuple[int, int], ...] = ((3, 1), (3, 2), (3, 3))
+    p_intended_action: float = 1
+    env = LabyrinthEnv(
+        p_intended_action=p_intended_action,
+        reward_config=reward_config,
+        init_pos=init_pos,
+    )
+
+    action = [env.actions.right, env.actions.right, env.actions.stay]
+
+    obs, _ = env.reset()
+    env.current_goal_group_indices = [0]
+    rewards: list[int] = []
+    frames = [env.render()]
+
+    for i in range(1):
+        obs, reward, terminated, truncated, info = env.step(action)
+        rewards.append(reward)
+        print(f"reward: {reward}")
+        print(f"terminated: {terminated}")
+        print(f"truncated: {truncated}")
+        frames.append(env.render())
+        if terminated or truncated:
+            break
+
+    imageio.mimsave(
+        "tests/out/animations/labyrinth_compute_rewards_agent_on_goal_0.gif",
+        frames,
+        loop=10,
+    )
+
+    assert rewards == [
+        reward_config["movement_reward"] * 2 + reward_config["agent_on_goal_reward"] * 2
+    ]
+
+
+def test_compute_rewards_final_goal_agent_on_goal_0() -> None:
+    reward_config: RewardConfig = {
+        "reward_option": "final_goal",
+        "movement_reward": -0.02,
+        "agent_on_goal_reward": 0.2,
+        "agent_move_away_from_goal_reward": -0.3,
+        "all_agents_on_goal_reward": 1.0,
+    }
+
+    init_pos: tuple[tuple[int, int], ...] = ((3, 1), (3, 2), (3, 3))
+    p_intended_action: float = 1
+    env = LabyrinthEnv(
+        p_intended_action=p_intended_action,
+        reward_config=reward_config,
+        init_pos=init_pos,
+    )
+
+    action = [env.actions.right, env.actions.right, env.actions.stay]
+
+    obs, _ = env.reset()
+    env.current_goal_group_indices = [0]
+    rewards: list[int] = []
+    frames = [env.render()]
+
+    for i in range(1):
+        obs, reward, terminated, truncated, info = env.step(action)
+        rewards.append(reward)
+        print(f"reward: {reward}")
+        print(f"terminated: {terminated}")
+        print(f"truncated: {truncated}")
+        frames.append(env.render())
+        if terminated or truncated:
+            break
+
+    imageio.mimsave(
+        "tests/out/animations/labyrinth_compute_rewards_agent_on_goal_0.gif",
+        frames,
+        loop=10,
+    )
+
+    assert rewards == [reward_config["movement_reward"] * 2]
