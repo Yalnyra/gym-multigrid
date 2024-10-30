@@ -1,4 +1,4 @@
-from typing import Any, Literal, Type, TypedDict, TypeVar
+from typing import Any, Literal, List, Tuple, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
@@ -502,29 +502,25 @@ class LabyrinthEnv(MultiGridEnv):
         max_x: int = self.width - 1
         max_y: int = self.height - 1
 
-        match self.observation_option:
-            case "final_goal":
-                num_obj: int = 2 * self.num_agents
-                num_elements: int = 2 * num_obj
-                observation_space = Box(
-                    low=np.zeros(num_elements),
-                    high=np.array([max_x, max_y] * num_obj).flatten(),
+        num_agents: int = self.num_agents
+
+        if self.observation_option == "final_goal":
+            num_goals: int = 1
+        elif self.observation_option == "all_goals":
+            num_goals: int = len(self.goals)
+        else:
+            raise ValueError(f"Invalid observation option: {self.observation_option}")
+
+        observation_space = Dict(
+            {
+                str(i): Box(
+                    low=np.zeros(2 * (num_goals + 1)),
+                    high=np.array([max_x, max_y] * (num_goals + 1)),
                     dtype=np.int_,
                 )
-            case "all_goals":
-                num_obj: int = 2 * (
-                    self.num_agents + self.num_agents * len(self.goal_group_config)
-                )
-                num_elements: int = 2 * num_obj
-                observation_space = Box(
-                    low=np.zeros(num_elements),
-                    high=np.array([max_x, max_y] * num_obj).flatten(),
-                    dtype=np.int_,
-                )
-            case _:
-                raise ValueError(
-                    f"Invalid observation option: {self.observation_option}"
-                )
+                for i in range(num_agents)
+            }
+        )
 
         return observation_space
 
@@ -629,21 +625,24 @@ class LabyrinthEnv(MultiGridEnv):
             self.place_agent(agent, pos)
 
     def _get_obs(self) -> NDArray[np.int_]:
-        obs: list[int] = []
+        obs: dict[str, Any] = {}
 
-        for agent in self.agents:
-            obs += [agent.pos[0], agent.pos[1]]
+        for i, agent in enumerate(self.agents):
+            agent_obs: List[Tuple[int, int]] = [agent.pos]
 
-        match self.observation_option:
-            case "final_goal":
-                for goal in self.final_goal:
-                    obs += list(goal)
-            case "all_goals":
+            if self.observation_option == "final_goal":
+                agent_obs.extend(self.final_goal)
+            elif self.observation_option == "all_goals":
                 for goal in self.goals:
-                    for pos in goal:
-                        obs += list(pos)
+                    agent_obs.extend(goal)
+            else:
+                raise ValueError(
+                    f"Invalid observation option: {self.observation_option}"
+                )
 
-        return np.array(obs).flatten()
+            obs[str(i)] = np.array(agent_obs).flatten()
+
+        return obs
 
     def step(
         self,
