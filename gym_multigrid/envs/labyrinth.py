@@ -2,7 +2,7 @@ from typing import Any, Literal, Type, TypedDict, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
-from gymnasium.spaces import Box, MultiDiscrete
+from gymnasium.spaces import Box, MultiDiscrete, Dict
 
 from gym_multigrid.core.agent import NavigationActions, ActionsT, Agent, NAV_DIR_TO_VEC
 from gym_multigrid.core.grid import Grid
@@ -137,9 +137,6 @@ class ObjectGroup:
 
     def call_action(self, action: str, args: dict[str, Any] = {}) -> Any:
         return getattr(self, action)(**args)
-
-
-ObjectGroupT = TypeVar("ObjectGroupT", bound="ObjectGroup")
 
 
 class BlockGroup(ObjectGroup):
