@@ -403,10 +403,29 @@ class LabyrinthEnv(MultiGridEnv):
             Initial positions of the agents.
         goal_group_config : list[GoalGroupConfig] = goal_group_config
             Configuration of the goal groups.
+            The following keys are required:
+            - "group_index": int # Group index
+            - "pos": tuple[tuple[int, int], ...] # Positions of the goals
+            - "valid_agent_indices": tuple[int, ...] # Indices of the agents that should be on the goal
+            - "called_actions": list[str] # Actions to call for the goal
+            - "action_obj_type": str # Type of the object to call the action
+            - "action_obj_group": int # Group index of the object to call the action
+            - "next_goal": int | "terminal" # Next goal group index or "terminal"
         obj_group_config : list[ObjectGroupConfig] = obj_group_config
             Configuration of the object groups.
+            The following keys are required:
+            - "obj_type": "block" | "zone" # Object type
+            - "group_index": int # Group index
+            - "pos": tuple[tuple[int, int], ...] # Positions of the objects
+            - "obj_args": dict[str, Any] # Arguments to initialize the object
+            - "group_args": dict[str, Any] # Arguments to initialize the group and object
         reward_config : RewardConfig = reward_config
             Configuration of the rewards.
+            The following keys are required:
+            - "reward_option": "final_goal" | "intermediate_goal" # Reward option
+            - "movement_reward": float # Movement penalty for each agent if an action is not "stay"
+            - "agent_on_goal_reward": float # Reward for each agent if it is on its assigned goal
+            - "agent_move_away_from_goal_reward": float # Penalty for each agent if it moves away from its assigned goal though it was on it
         observation_option : Literal["final_goal", "all_goals"] = "final_goal"
             Observation option.
             - "final_goal": The observation is the positions of the final goal and agents.
