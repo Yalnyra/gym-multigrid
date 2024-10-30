@@ -253,14 +253,53 @@ class LabyrinthEnv(MultiGridEnv):
         obj_group_config: list[ObjectGroupConfig] = obj_group_config,
         reward_config: RewardConfig = reward_config,
         observation_option: Literal["final_goal", "all_goals"] = "final_goal",
-        width: int | None = 10,
-        height: int | None = 9,
+        width: int = 10,
+        height: int = 9,
         max_steps: int = 100,
         actions_set: type[ActionsT] = NavigationActions,
         agent_dir_to_vec: list[NDArray[np.int_]] = NAV_DIR_TO_VEC,
         world: WorldT = LabyrinthWorld,
         render_mode: Literal["human"] | Literal["rgb_array"] = "rgb_array",
     ) -> None:
+        """
+        Constructor for the LabyrinthEnv class.
+
+        Parameters
+        ----------
+        num_agents : int = 3
+            Number of agents in the environment.
+        p_intended_action : float = 0.95
+            Probability of the intended action.
+            Should be in the range [0, 1].
+        init_pos : list[tuple[int, int]] = [(1, 3), (1, 4), (1, 5)]
+            Initial positions of the agents.
+        goal_group_config : list[GoalGroupConfig] = goal_group_config
+            Configuration of the goal groups.
+        obj_group_config : list[ObjectGroupConfig] = obj_group_config
+            Configuration of the object groups.
+        reward_config : RewardConfig = reward_config
+            Configuration of the rewards.
+        observation_option : Literal["final_goal", "all_goals"] = "final_goal"
+            Observation option.
+            - "final_goal": The observation is the positions of the final goal and agents.
+            - "all_goals": The observation is the positions of all the goals and agents.
+        width : int = 10
+            Width of the grid.
+        height : int = 9
+            Height of the grid.
+        max_steps : int = 100
+            Maximum number of steps in the environment.
+        actions_set : type[ActionsT] = NavigationActions
+            Set of actions for the agents.
+            By default, there are five actions: "stay", "up", "right", "down", and "left".
+        agent_dir_to_vec : list[NDArray[np.int_]] = NAV_DIR_TO_VEC
+            Direction vectors for the agents.
+            The length of the list should be equal to the number of actions in the actions set.
+        world : WorldT = LabyrinthWorld
+            World for the environment.
+        render_mode : Literal["human"] | Literal["rgb_array"] = "rgb_array"
+            Render mode for the environment.
+        """
         self.num_agents: int = num_agents
         self.p_intended_action: float = p_intended_action
         self.goal_group_config: list[GoalGroupConfig] = goal_group_config
