@@ -644,9 +644,18 @@ class LabyrinthEnv(MultiGridEnv):
 
         self.final_goal: Tuple[Tuple[int, int], ...] = ()
         self.goals: List[Tuple[Tuple[int, int], ...]] = []
+        self.agent_goals: dict[int, list[tuple[int, int]]] = {}
 
         for goal_config in self.goal_group_config:
             self.goals.append(goal_config["pos"])
+            for agent_index, pos in zip(
+                goal_config["valid_agent_indices"], goal_config["pos"]
+            ):
+                if agent_index in self.agent_goals:
+                    self.agent_goals[agent_index].append(pos)
+                else:
+                    self.agent_goals[agent_index] = [pos]
+
             if goal_config["next_goal"] == "terminal":
                 self.final_goal = goal_config["pos"]
                 self.final_goal_group_index = goal_config["group_index"]
@@ -675,9 +684,11 @@ class LabyrinthEnv(MultiGridEnv):
         max_y: int = self.height - 1
 
         if self.observation_option == "final_goal":
-            num_goals: int = 1
+            nums_goals: list[int] = [1 for _ in range(self.num_agents)]
         elif self.observation_option == "intermediate_goal":
-            num_goals: int = len(self.goals)
+            nums_goals: list[int] = [
+                len(agent_goals) for agent_goals in self.agent_goals.values()
+            ]
         else:
             raise ValueError(f"Invalid observation option: {self.observation_option}")
 
@@ -688,7 +699,7 @@ class LabyrinthEnv(MultiGridEnv):
                     high=np.array([max_x, max_y] * (num_goals + 1)),
                     dtype=np.int_,
                 )
-                for i in range(self.num_agents)
+                for i, num_goals in enumerate(nums_goals)
             }
         )
 
@@ -813,8 +824,7 @@ class LabyrinthEnv(MultiGridEnv):
             if self.observation_option == "final_goal":
                 agent_obs.append(self.final_goal[i])
             elif self.observation_option == "intermediate_goal":
-                for goal in self.goals:
-                    agent_obs.append(goal[i])
+                agent_obs.extend(self.agent_goals[i])
             else:
                 raise ValueError(
                     f"Invalid observation option: {self.observation_option}"
