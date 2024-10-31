@@ -219,7 +219,7 @@ def test_capture_policy() -> None:
 
 def test_patrol_policy() -> None:
     animation_path: str = "tests/out/animations/ctf_mvn_patrol_policy.gif"
-    map_path: str = "tests/assets/board.txt"
+    map_path: str = "tests/assets/board_wall.txt"
 
     field_map = load_text_map(map_path)
     enemy_policy = "patrol"
@@ -249,7 +249,7 @@ def test_patrol_policy() -> None:
 
 def test_patrol_fight_policy() -> None:
     animation_path: str = "tests/out/animations/ctf_mvn_patrol_fight_policy.gif"
-    map_path: str = "tests/assets/board.txt"
+    map_path: str = "tests/assets/board_wall.txt"
 
     field_map = load_text_map(map_path)
     enemy_policy = "patrol_fight"

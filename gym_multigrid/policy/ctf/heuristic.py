@@ -440,11 +440,14 @@ class PatrolPolicy(DestinationPolicy):
 
         self.directions: list[Position] = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 
-        self.border: list[Position]
-        self.obstacle: list[Position]
-        self.border, self.obstacle = self.locate_border(world, self.directions)
+        self.border: list[Position] = []
+        self.obstacle: list[Position] = []
 
     def get_target(self, observation: ObservationDict, curr_pos: Position) -> Position:
+        if not self.border or not self.obstacle:
+            self.border, self.obstacle = self.locate_border(self.world, self.directions)
+        else:
+            pass
 
         if position_in_positions(curr_pos, self.border):
             possible_next_pos: list[Position] = [
@@ -569,6 +572,11 @@ class PatrolFightPolicy(PatrolPolicy):
         self.name = "patrol_fight"
 
     def get_target(self, observation: ObservationDict, curr_pos: Position) -> Position:
+        if not self.border or not self.obstacle:
+            self.border, self.obstacle = self.locate_border(self.world, self.directions)
+        else:
+            pass
+
         opponent_agent: Literal["red_agent", "blue_agent"] = (
             "blue_agent" if self.ego_agent == "red" else "red_agent"
         )
