@@ -83,19 +83,16 @@ obj_group_config: List[ObjectGroupConfig] = [
         "obj_type": "block",
         "group_index": 0,
         "pos": ((5, 1), (5, 2), (5, 3)),
-        "group_args": {},
     },
     {
         "obj_type": "block",
         "group_index": 1,
         "pos": ((4, 5), (4, 6), (4, 7)),
-        "group_args": {},
     },
     {
         "obj_type": "block",
         "group_index": 2,
         "pos": ((7, 2), (7, 3), (7, 4), (7, 5), (7, 6)),
-        "group_args": {},
     },
     {
         "obj_type": "zone",
@@ -507,41 +504,50 @@ class LabyrinthEnv(MultiGridEnv):
             "obj_type": "block",
             "group_index": 0,
             "pos": ((5, 1), (5, 2), (5, 3)),
-            "obj_args": {},
-            "group_args": {},
         },
         {
             "obj_type": "block",
             "group_index": 1,
             "pos": ((4, 5), (4, 6), (4, 7)),
-            "obj_args": {},
-            "group_args": {},
         },
         {
             "obj_type": "block",
             "group_index": 2,
             "pos": ((7, 2), (7, 3), (7, 4), (7, 5), (7, 6)),
-            "obj_args": {},
-            "group_args": {},
         },
         {
             "obj_type": "zone",
             "group_index": 0,
             "pos": ((2, 1), (2, 2), (2, 3)),
-            "obj_args": {"color": "blue"},
-            "group_args": {"visual_detect_prob": 0.005},
+            "group_args": {"color": "blue", "visual_detect_prob": 0.005},
         },
         {
             "obj_type": "zone",
             "group_index": 1,
             "pos": ((2, 5), (2, 6), (2, 7)),
-            "obj_args": {"color": "red"},
             "group_args": {
+                "color": "red",
                 "visual_detect_prob": 0.005,
                 "radio_detect_prob": 0.06,
             },
         },
-    ]
+        {
+            "obj_type": "wall",
+            "group_index": 0,
+            "pos": ((0, 0, 10, 9),),
+            "group_args": {
+                "fill_mode": "empty",
+            },
+        },
+        {
+            "obj_type": "wall",
+            "group_index": 1,
+            "pos": ((7, 1, 2, 1), (7, 7, 2, 1), (3, 4, 2, 1)),
+            "group_args": {
+                "fill_mode": "filled",
+            },
+        },
+        ]
     ```
     """
 
