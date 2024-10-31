@@ -113,6 +113,22 @@ obj_group_config: List[ObjectGroupConfig] = [
             "radio_detect_prob": 0.06,
         },
     },
+    {
+        "obj_type": "wall",
+        "group_index": 0,
+        "pos": ((0, 0, 10, 9),),
+        "group_args": {
+            "fill_mode": "empty",
+        },
+    },
+    {
+        "obj_type": "wall",
+        "group_index": 1,
+        "pos": ((7, 1, 2, 1), (7, 7, 2, 1), (3, 4, 2, 1)),
+        "group_args": {
+            "fill_mode": "filled",
+        },
+    },
 ]
 
 reward_config: RewardConfig = {
@@ -721,12 +737,6 @@ class LabyrinthEnv(MultiGridEnv):
     def _gen_grid(self, width, height) -> None:
         self.grid = Grid(width, height, self.world)
 
-        # Generate walls
-        self.grid.wall_rect(0, 0, width, height)
-        self.grid.wall_rect_filled(7, 1, 2, 1)
-        self.grid.wall_rect_filled(7, 7, 2, 1)
-        self.grid.wall_rect_filled(3, 4, 2, 1)
-
         obj_group_dict: ObjectGroupDict = {}
 
         # Place the goal objects
@@ -744,8 +754,10 @@ class LabyrinthEnv(MultiGridEnv):
         # Place blocks
         obj_group_dict["block"] = {}
         obj_group_dict["zone"] = {}
+        obj_group_dict["wall"] = {}
         for obj_group_config in self.obj_group_config:
             obj_type: str = obj_group_config["obj_type"]
+            group_index: int = obj_group_config["group_index"]
 
             if obj_type == "block":
                 obj_group_dict[obj_type][group_index] = BlockGroup(
@@ -755,6 +767,15 @@ class LabyrinthEnv(MultiGridEnv):
             elif obj_type == "zone":
                 args: Dict[str, Any] = obj_group_config["group_args"]
                 obj_group_dict[obj_type][group_index] = ZoneGroup(
+                    obj_type,
+                    obj_group_config["group_index"],
+                    obj_group_config["pos"],
+                    **args,
+                )
+
+            elif obj_type == "wall":
+                args: Dict[str, Any] = obj_group_config["group_args"]
+                obj_group_dict[obj_type][group_index] = WallGroup(
                     obj_type,
                     obj_group_config["group_index"],
                     obj_group_config["pos"],
