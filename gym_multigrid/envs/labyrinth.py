@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Any, Literal, List, Tuple, TypedDict, Dict, Union, Optional
 
 import numpy as np
@@ -6,7 +7,7 @@ from gymnasium import spaces
 
 from gym_multigrid.core.agent import NavigationActions, ActionsT, Agent, NAV_DIR_TO_VEC
 from gym_multigrid.core.grid import Grid
-from gym_multigrid.core.object import AgentGoal, Block, WorldObjT, Zone
+from gym_multigrid.core.object import AgentGoal, Block, Wall, WorldObjT, Zone
 from gym_multigrid.core.world import WorldT, LabyrinthWorld
 from gym_multigrid.multigrid import MultiGridEnv
 from gym_multigrid.typing import Position
@@ -22,11 +23,13 @@ class GoalGroupConfig(TypedDict):
     next_goal: Union[int, Literal["terminal"]]
 
 
-class ObjectGroupConfig(TypedDict):
+class _ObjectGroupConfig(TypedDict):
     obj_type: str
     group_index: int
-    pos: Tuple[Tuple[int, int], ...]
-    obj_args: Dict[str, Any]
+    pos: Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...]
+
+
+class ObjectGroupConfig(_ObjectGroupConfig, total=False):
     group_args: Dict[str, Any]
 
 
@@ -80,36 +83,32 @@ obj_group_config: List[ObjectGroupConfig] = [
         "obj_type": "block",
         "group_index": 0,
         "pos": ((5, 1), (5, 2), (5, 3)),
-        "obj_args": {},
         "group_args": {},
     },
     {
         "obj_type": "block",
         "group_index": 1,
         "pos": ((4, 5), (4, 6), (4, 7)),
-        "obj_args": {},
         "group_args": {},
     },
     {
         "obj_type": "block",
         "group_index": 2,
         "pos": ((7, 2), (7, 3), (7, 4), (7, 5), (7, 6)),
-        "obj_args": {},
         "group_args": {},
     },
     {
         "obj_type": "zone",
         "group_index": 0,
         "pos": ((2, 1), (2, 2), (2, 3)),
-        "obj_args": {"color": "blue"},
-        "group_args": {"visual_detect_prob": 0.005},
+        "group_args": {"color": "blue", "visual_detect_prob": 0.005},
     },
     {
         "obj_type": "zone",
         "group_index": 1,
         "pos": ((2, 5), (2, 6), (2, 7)),
-        "obj_args": {"color": "red"},
         "group_args": {
+            "color": "red",
             "visual_detect_prob": 0.005,
             "radio_detect_prob": 0.06,
         },
@@ -125,24 +124,143 @@ reward_config: RewardConfig = {
 }
 
 
-class ObjectGroup:
+class ObjectGroup(ABC):
     def __init__(
-        self, obj_type: str, group_index: int, pos: Tuple[Tuple[int, int], ...]
+        self,
+        obj_type: str,
+        group_index: int,
+        pos: Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...],
+        fill_mode: Literal["empty", "filled"] = "filled",
     ) -> None:
+        """
+        Initializes the object group.
+
+        Parameters
+        ----------
+        obj_type : str
+            Type of the object.
+        group_index : int
+            Group index of the object.
+        pos : Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...]
+            Positions of the objects.
+            A tuple element can be either a tuple of two integers or a tuple of four integers.
+            - (x, y): Position of the object.
+            - (x, y, w, h): Position and size of the object.
+        fill_mode : Literal["empty", "filled"] = "filled"
+            Fill mode of the object.
+            - "empty": Empty fill mode.
+            - "filled": Filled fill mode.
+        """
         self.obj_type: str = obj_type
         self.group_index: int = group_index
-        self.pos: Tuple[Tuple[int, int], ...] = pos
+
+        pos_list: List[Tuple[int, int]] = []
+        for p in pos:
+            if len(p) == 2:
+                pos_list.append(p)
+            elif len(p) == 4:
+                if fill_mode == "empty":
+                    pos_list += self._rect_empty(*p)
+                elif fill_mode == "filled":
+                    pos_list += self._rect_filled(*p)
+                else:
+                    raise ValueError(f"Invalid fill mode: {fill_mode}")
+            else:
+                raise ValueError(f"Invalid position: {p}. The length should be 2 or 4.")
+
+        self.pos: Tuple[Tuple[int, int], ...] = tuple(pos_list)
+
+    def put_objects(self, grid: Grid, world: WorldT) -> None:
+        """
+        Places the objects on the grid.
+
+        Parameters
+        ----------
+        grid : Grid
+            Global grid from the env to place the objects.
+        world : WorldT
+            World to place the objects.
+        """
+        for pos in self.pos:
+            obj: WorldObjT = self._init_obj(world)
+            self._put_obj(grid, pos, obj)
+
+    @abstractmethod
+    def _init_obj(self, world: WorldT) -> WorldObjT:
+        """
+        Defines the initialization of the object.
+        """
+        ...
+
+    def _put_obj(self, grid: Grid, pos: Tuple[int, int], obj: WorldObjT) -> None:
+        """
+        Places the object on the grid.
+
+        Parameters
+        ----------
+        grid : Grid
+            Global grid from the env to place the object.
+        pos : Tuple[int, int]
+            Position to place the object.
+        obj : WorldObjT
+            Object to place.
+        """
+
+        obj.init_pos = pos
+        obj.pos = pos
+        grid.set(*pos, obj)
 
     def call_action(self, action: str, args: Dict[str, Any] = {}) -> Any:
         return getattr(self, action)(**args)
 
+    def _horz_fill(
+        self,
+        x: int,
+        y: int,
+        length: int,
+    ) -> List[Tuple[int, int]]:
+        pos_list: List[Tuple[int, int]] = [(x + i, y) for i in range(length)]
+        return pos_list
+
+    def _vert_fill(
+        self,
+        x: int,
+        y: int,
+        length: int,
+    ) -> List[Tuple[int, int]]:
+        pos_list: List[Tuple[int, int]] = [(x, y + i) for i in range(length)]
+        return pos_list
+
+    def _rect_empty(self, x: int, y: int, w: int, h: int) -> List[Tuple[int, int]]:
+        pos_list: List[Tuple[int, int]] = (
+            self._horz_fill(x, y, w)
+            + self._horz_fill(x, y + h - 1, w)
+            + self._vert_fill(x, y, h)
+            + self._vert_fill(x + w - 1, y, h)
+        )
+
+        return pos_list
+
+    def _rect_filled(self, x: int, y: int, w: int, h: int) -> List[Tuple[int, int]]:
+        pos_list: List[Tuple[int, int]] = [
+            (x + i, y + j) for i in range(w) for j in range(h)
+        ]
+
+        return pos_list
+
 
 class BlockGroup(ObjectGroup):
     def __init__(
-        self, obj_type: str, group_index: int, pos: Tuple[Tuple[int, int], ...]
+        self,
+        obj_type: str,
+        group_index: int,
+        pos: Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...],
     ) -> None:
         super().__init__(obj_type, group_index, pos)
         self.locked: bool = True
+
+    def _init_obj(self, world: WorldT) -> Block:
+        return Block(world)
 
     def open(self, grid: Grid) -> None:
         for pos in self.pos:
@@ -174,6 +292,15 @@ class GoalGroup(ObjectGroup):
         self.action_obj_group: Optional[int] = action_obj_group
         self.next_goal: Union[int, Literal["terminal"]] = next_goal
 
+    def _init_obj(self, world: WorldT, agent_index: int) -> AgentGoal:
+        return AgentGoal(world, agent_index, self.group_index, color="green")
+
+    def put_objects(self, grid: Grid, world: WorldT) -> None:
+        assert len(self.pos) == len(self.valid_agent_indices)
+        for pos, agent_index in zip(self.pos, self.valid_agent_indices):
+            obj: AgentGoal = self._init_obj(world, agent_index)
+            self._put_obj(grid, pos, obj)
+
     def agents_on_goals(self, agents: List[Agent]) -> bool:
         for pos, agent_index in zip(self.pos, self.valid_agent_indices):
             if (
@@ -201,7 +328,7 @@ class ZoneGroup(ObjectGroup):
         self,
         obj_type: str,
         group_index: int,
-        pos: Tuple[Tuple[int, int], ...],
+        pos: Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...],
         color: str,
         visual_detect_prob: float = 0.0,
         radio_detect_prob: float = 0.0,
@@ -210,6 +337,9 @@ class ZoneGroup(ObjectGroup):
         self.color: str = color
         self.visual_detect_prob: float = visual_detect_prob
         self.radio_detect_prob: float = radio_detect_prob
+
+    def _init_obj(self, world: WorldT) -> Zone:
+        return Zone(world, self.color, f"{self.color}_zone")
 
     def detect_agents(
         self, agents: List[Agent], random_generator: np.random.Generator
@@ -231,10 +361,25 @@ class ZoneGroup(ObjectGroup):
             return False
 
 
+class WallGroup(ObjectGroup):
+    def __init__(
+        self,
+        obj_type: str,
+        group_index: int,
+        pos: Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...],
+        fill_mode: Literal["empty", "filled"] = "filled",
+    ) -> None:
+        super().__init__(obj_type, group_index, pos, fill_mode)
+
+    def _init_obj(self, world: WorldT) -> Wall:
+        return Wall(world)
+
+
 class ObjectGroupDict(TypedDict):
     goal: Dict[int, GoalGroup]
     block: Dict[int, BlockGroup]
     zone: Dict[int, ZoneGroup]
+    wall: Dict[int, WallGroup]
 
 
 class LabyrinthEnv(MultiGridEnv):
@@ -601,36 +746,25 @@ class LabyrinthEnv(MultiGridEnv):
         obj_group_dict["zone"] = {}
         for obj_group_config in self.obj_group_config:
             obj_type: str = obj_group_config["obj_type"]
-            group_index: int = obj_group_config["group_index"]
-            positions: Tuple[Tuple[int, int], ...] = obj_group_config["pos"]
 
             if obj_type == "block":
                 obj_group_dict[obj_type][group_index] = BlockGroup(
-                    obj_type, group_index, positions
+                    obj_type, obj_group_config["group_index"], obj_group_config["pos"]
                 )
-
-                for pos in positions:
-                    block = Block(self.world)
-                    self.put_obj(block, *pos)
 
             elif obj_type == "zone":
-                color: str = obj_group_config["obj_args"]["color"]
-                args: Dict[str, Any] = (
-                    obj_group_config["group_args"] | obj_group_config["obj_args"]
-                )
+                args: Dict[str, Any] = obj_group_config["group_args"]
                 obj_group_dict[obj_type][group_index] = ZoneGroup(
                     obj_type,
-                    group_index,
-                    positions,
+                    obj_group_config["group_index"],
+                    obj_group_config["pos"],
                     **args,
                 )
 
-                for pos in positions:
-                    zone = Zone(self.world, f"{color}", f"{color}_zone")
-                    self.put_obj(zone, *pos)
-
             else:
                 raise ValueError(f"Invalid object type: {obj_type}")
+
+            obj_group_dict[obj_type][group_index].put_objects(self.grid, self.world)
 
         self.obj_group_dict = obj_group_dict
 
