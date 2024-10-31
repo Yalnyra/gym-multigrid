@@ -642,6 +642,17 @@ class LabyrinthEnv(MultiGridEnv):
             for i in range(num_agents)
         ]
 
+        self.final_goal: Tuple[Tuple[int, int], ...] = ()
+        self.goals: List[Tuple[Tuple[int, int], ...]] = []
+
+        for goal_config in self.goal_group_config:
+            self.goals.append(goal_config["pos"])
+            if goal_config["next_goal"] == "terminal":
+                self.final_goal = goal_config["pos"]
+                self.final_goal_group_index = goal_config["group_index"]
+
+        self.init_goal_group_indices: List[int] = self._find_first_goal_groups()
+
         uncached_object_types: List[str] = ["agent"]
 
         super().__init__(
@@ -658,17 +669,6 @@ class LabyrinthEnv(MultiGridEnv):
         self.action_space = spaces.MultiDiscrete(
             [len(self.actions) for _ in range(self.num_agents)]
         )
-
-        self.final_goal: Tuple[Tuple[int, int], ...] = ()
-        self.goals: List[Tuple[Tuple[int, int], ...]] = []
-
-        for goal_config in self.goal_group_config:
-            self.goals.append(goal_config["pos"])
-            if goal_config["next_goal"] == "terminal":
-                self.final_goal = goal_config["pos"]
-                self.final_goal_group_index = goal_config["group_index"]
-
-        self.init_goal_group_indices: List[int] = self._find_first_goal_groups()
 
     def _set_observation_space(self) -> spaces.Box:
         max_x: int = self.width - 1
@@ -811,10 +811,10 @@ class LabyrinthEnv(MultiGridEnv):
             agent_obs: List[Tuple[int, int]] = [agent.pos]
 
             if self.observation_option == "final_goal":
-                agent_obs.extend(self.final_goal)
+                agent_obs.append(self.final_goal[i])
             elif self.observation_option == "intermediate_goal":
                 for goal in self.goals:
-                    agent_obs.extend(goal)
+                    agent_obs.append(goal[i])
             else:
                 raise ValueError(
                     f"Invalid observation option: {self.observation_option}"

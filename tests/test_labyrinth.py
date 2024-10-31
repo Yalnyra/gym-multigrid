@@ -1,5 +1,8 @@
-import numpy as np
+from typing import Literal
 import pytest
+
+import numpy as np
+from numpy.typing import NDArray
 
 import imageio
 
@@ -26,6 +29,23 @@ def test_labyrinth() -> None:
             break
 
     imageio.mimsave(animation_path, frames, loop=10)
+
+
+@pytest.mark.parametrize(
+    "observation_option, expected_shape",
+    [
+        ("final_goal", (2 * 2,)),
+        ("intermediate_goal", (5 * 2,)),
+    ],
+)
+def test_observation_space(
+    observation_option: Literal["final_goal", "intermediate_goal"],
+    expected_shape: tuple[int, int],
+) -> None:
+    env = LabyrinthEnv(observation_option=observation_option)
+    obs: dict[str, NDArray[np.int_]] = env.reset()[0]
+    for key in obs.keys():
+        assert obs[key].shape == expected_shape
 
 
 def test_check_door_0() -> None:
