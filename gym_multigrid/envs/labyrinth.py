@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Literal, List, Tuple, TypedDict, Dict, Union, Optional
+from typing import Any, Literal, TypedDict, Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,22 +15,22 @@ from gym_multigrid.typing import Position
 
 class GoalGroupConfig(TypedDict):
     group_index: int
-    pos: Tuple[Tuple[int, int], ...]
-    valid_agent_indices: Tuple[int, ...]
-    called_actions: List[str]
+    pos: tuple[tuple[int, int], ...]
+    valid_agent_indices: tuple[int, ...]
+    called_actions: list[str]
     action_obj_type: str
     action_obj_group: int
-    next_goal: Union[int, Literal["terminal"]]
+    next_goal: int | Literal["terminal"]
 
 
 class _ObjectGroupConfig(TypedDict):
     obj_type: str
     group_index: int
-    pos: Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...]
+    pos: tuple[tuple[int, int] | tuple[int, int, int, int], ...]
 
 
 class ObjectGroupConfig(_ObjectGroupConfig, total=False):
-    group_args: Dict[str, Any]
+    group_args: dict[str, Any]
 
 
 class RewardConfig(TypedDict):
@@ -41,7 +41,7 @@ class RewardConfig(TypedDict):
     all_agents_on_goal_reward: float
 
 
-goal_group_config: List[GoalGroupConfig] = [
+goal_group_config: list[GoalGroupConfig] = [
     {
         "group_index": 0,
         "pos": ((4, 1), (4, 2), (4, 3)),
@@ -78,7 +78,7 @@ goal_group_config: List[GoalGroupConfig] = [
     },
 ]
 
-obj_group_config: List[ObjectGroupConfig] = [
+obj_group_config: list[ObjectGroupConfig] = [
     {
         "obj_type": "block",
         "group_index": 0,
@@ -142,7 +142,7 @@ class ObjectGroup(ABC):
         self,
         obj_type: str,
         group_index: int,
-        pos: Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...],
+        pos: tuple[tuple[int, int] | tuple[int, int, int, int], ...],
         fill_mode: Literal["empty", "filled"] = "filled",
     ) -> None:
         """
@@ -154,7 +154,7 @@ class ObjectGroup(ABC):
             Type of the object.
         group_index : int
             Group index of the object.
-        pos : Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...]
+        pos : tuple[tuple[int, int] | tuple[int, int, int, int], ...]
             Positions of the objects.
             A tuple element can be either a tuple of two integers or a tuple of four integers.
             - (x, y): Position of the object.
@@ -167,7 +167,7 @@ class ObjectGroup(ABC):
         self.obj_type: str = obj_type
         self.group_index: int = group_index
 
-        pos_list: List[Tuple[int, int]] = []
+        pos_list: list[tuple[int, int]] = []
         for p in pos:
             if len(p) == 2:
                 pos_list.append(p)
@@ -181,7 +181,7 @@ class ObjectGroup(ABC):
             else:
                 raise ValueError(f"Invalid position: {p}. The length should be 2 or 4.")
 
-        self.pos: Tuple[Tuple[int, int], ...] = tuple(pos_list)
+        self.pos: tuple[tuple[int, int], ...] = tuple(pos_list)
 
     def put_objects(self, grid: Grid, world: WorldT) -> None:
         """
@@ -205,7 +205,7 @@ class ObjectGroup(ABC):
         """
         ...
 
-    def _put_obj(self, grid: Grid, pos: Tuple[int, int], obj: WorldObjT) -> None:
+    def _put_obj(self, grid: Grid, pos: tuple[int, int], obj: WorldObjT) -> None:
         """
         Places the object on the grid.
 
@@ -213,7 +213,7 @@ class ObjectGroup(ABC):
         ----------
         grid : Grid
             Global grid from the env to place the object.
-        pos : Tuple[int, int]
+        pos : tuple[int, int]
             Position to place the object.
         obj : WorldObjT
             Object to place.
@@ -223,7 +223,7 @@ class ObjectGroup(ABC):
         obj.pos = pos
         grid.set(*pos, obj)
 
-    def call_action(self, action: str, args: Dict[str, Any] = {}) -> Any:
+    def call_action(self, action: str, args: dict[str, Any] = {}) -> Any:
         return getattr(self, action)(**args)
 
     def _horz_fill(
@@ -231,8 +231,8 @@ class ObjectGroup(ABC):
         x: int,
         y: int,
         length: int,
-    ) -> List[Tuple[int, int]]:
-        pos_list: List[Tuple[int, int]] = [(x + i, y) for i in range(length)]
+    ) -> list[tuple[int, int]]:
+        pos_list: list[tuple[int, int]] = [(x + i, y) for i in range(length)]
         return pos_list
 
     def _vert_fill(
@@ -240,12 +240,12 @@ class ObjectGroup(ABC):
         x: int,
         y: int,
         length: int,
-    ) -> List[Tuple[int, int]]:
-        pos_list: List[Tuple[int, int]] = [(x, y + i) for i in range(length)]
+    ) -> list[tuple[int, int]]:
+        pos_list: list[tuple[int, int]] = [(x, y + i) for i in range(length)]
         return pos_list
 
-    def _rect_empty(self, x: int, y: int, w: int, h: int) -> List[Tuple[int, int]]:
-        pos_list: List[Tuple[int, int]] = (
+    def _rect_empty(self, x: int, y: int, w: int, h: int) -> list[tuple[int, int]]:
+        pos_list: list[tuple[int, int]] = (
             self._horz_fill(x, y, w)
             + self._horz_fill(x, y + h - 1, w)
             + self._vert_fill(x, y, h)
@@ -254,8 +254,8 @@ class ObjectGroup(ABC):
 
         return pos_list
 
-    def _rect_filled(self, x: int, y: int, w: int, h: int) -> List[Tuple[int, int]]:
-        pos_list: List[Tuple[int, int]] = [
+    def _rect_filled(self, x: int, y: int, w: int, h: int) -> list[tuple[int, int]]:
+        pos_list: list[tuple[int, int]] = [
             (x + i, y + j) for i in range(w) for j in range(h)
         ]
 
@@ -267,7 +267,7 @@ class BlockGroup(ObjectGroup):
         self,
         obj_type: str,
         group_index: int,
-        pos: Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...],
+        pos: tuple[tuple[int, int] | tuple[int, int, int, int], ...],
     ) -> None:
         super().__init__(obj_type, group_index, pos)
         self.locked: bool = True
@@ -290,20 +290,20 @@ class GoalGroup(ObjectGroup):
     def __init__(
         self,
         group_index: int,
-        pos: Tuple[Tuple[int, int], ...],
-        valid_agent_indices: Tuple[int, ...],
-        called_actions: List[str],
-        next_goal: Union[int, Literal["terminal"]],
+        pos: tuple[tuple[int, int], ...],
+        valid_agent_indices: tuple[int, ...],
+        called_actions: list[str],
+        next_goal: int | Literal["terminal"],
         action_obj_type: Optional[str] = None,
         action_obj_group: Optional[int] = None,
     ) -> None:
         obj_type: str = "goal"
         super().__init__(obj_type, group_index, pos)
-        self.valid_agent_indices: Tuple[int, ...] = valid_agent_indices
-        self.called_actions: List[str] = called_actions
+        self.valid_agent_indices: tuple[int, ...] = valid_agent_indices
+        self.called_actions: list[str] = called_actions
         self.action_obj_type: Optional[str] = action_obj_type
         self.action_obj_group: Optional[int] = action_obj_group
-        self.next_goal: Union[int, Literal["terminal"]] = next_goal
+        self.next_goal: int | Literal["terminal"] = next_goal
 
     def _init_obj(self, world: WorldT, agent_index: int) -> AgentGoal:
         return AgentGoal(world, agent_index, self.group_index, color="green")
@@ -314,7 +314,7 @@ class GoalGroup(ObjectGroup):
             obj: AgentGoal = self._init_obj(world, agent_index)
             self._put_obj(grid, pos, obj)
 
-    def agents_on_goals(self, agents: List[Agent]) -> bool:
+    def agents_on_goals(self, agents: list[Agent]) -> bool:
         for pos, agent_index in zip(self.pos, self.valid_agent_indices):
             if (
                 agents[agent_index].pos[0] != pos[0]
@@ -326,10 +326,10 @@ class GoalGroup(ObjectGroup):
 
         return True
 
-    def open(self, block_group_dict: Dict[int, BlockGroup], grid: Grid) -> None:
+    def open(self, block_group_dict: dict[int, BlockGroup], grid: Grid) -> None:
         block_group_dict[self.action_obj_group].open(grid)
 
-    def is_block_locked(self, block_group_dict: Dict[int, BlockGroup]) -> bool:
+    def is_block_locked(self, block_group_dict: dict[int, BlockGroup]) -> bool:
         if self.action_obj_group is None:
             return False
         else:
@@ -341,7 +341,7 @@ class ZoneGroup(ObjectGroup):
         self,
         obj_type: str,
         group_index: int,
-        pos: Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...],
+        pos: tuple[tuple[int, int] | tuple[int, int, int, int], ...],
         color: str,
         visual_detect_prob: float = 0.0,
         radio_detect_prob: float = 0.0,
@@ -355,7 +355,7 @@ class ZoneGroup(ObjectGroup):
         return Zone(world, self.color, f"{self.color}_zone")
 
     def detect_agents(
-        self, agents: List[Agent], random_generator: np.random.Generator
+        self, agents: list[Agent], random_generator: np.random.Generator
     ) -> bool:
         for agent in agents:
             if self.detect_agent(agent, random_generator):
@@ -379,7 +379,7 @@ class WallGroup(ObjectGroup):
         self,
         obj_type: str,
         group_index: int,
-        pos: Tuple[Union[Tuple[int, int], Tuple[int, int, int, int]], ...],
+        pos: tuple[tuple[int, int] | tuple[int, int, int, int], ...],
         fill_mode: Literal["empty", "filled"] = "filled",
     ) -> None:
         super().__init__(obj_type, group_index, pos, fill_mode)
@@ -389,10 +389,10 @@ class WallGroup(ObjectGroup):
 
 
 class ObjectGroupDict(TypedDict):
-    goal: Dict[int, GoalGroup]
-    block: Dict[int, BlockGroup]
-    zone: Dict[int, ZoneGroup]
-    wall: Dict[int, WallGroup]
+    goal: dict[int, GoalGroup]
+    block: dict[int, BlockGroup]
+    zone: dict[int, ZoneGroup]
+    wall: dict[int, WallGroup]
 
 
 class LabyrinthEnv(MultiGridEnv):
@@ -408,14 +408,14 @@ class LabyrinthEnv(MultiGridEnv):
     ### Example
     ``` python
     # Observation option is "final_goal"
-    observation_space = Dict({
+    observation_space = dict({
         "0": Box(low=np.zeros(4), high=np.array([9, 8, 9, 8]), dtype=np.int_),
         "1": Box(low=np.zeros(4), high=np.array([9, 8, 9, 8]), dtype=np.int_),
         "2": Box(low=np.zeros(4), high=np.array([9, 8, 9, 8]), dtype=np.int_),
     })
 
     # Observation option is "intermediate_goal"
-    observation_space = Dict({
+    observation_space = dict({
         "0": Box(low=np.zeros(10), high=np.array([9, 8] * 5), dtype=np.int_),
         "1": Box(low=np.zeros(10), high=np.array([9, 8] * 5), dtype=np.int_),
         "2": Box(low=np.zeros(10), high=np.array([9, 8] * 5), dtype=np.int_),
@@ -460,7 +460,7 @@ class LabyrinthEnv(MultiGridEnv):
 
     ### Example
     ``` python
-    goal_group_config: List[GoalGroupConfig] = [
+    goal_group_config: list[GoalGroupConfig] = [
         {
             "group_index": 0,
             "pos": ((4, 1), (4, 2), (4, 3)),
@@ -499,7 +499,7 @@ class LabyrinthEnv(MultiGridEnv):
         },
     ]
 
-    obj_group_config: List[ObjectGroupConfig] = [
+    obj_group_config: list[ObjectGroupConfig] = [
         {
             "obj_type": "block",
             "group_index": 0,
@@ -555,16 +555,16 @@ class LabyrinthEnv(MultiGridEnv):
         self,
         num_agents: int = 3,
         p_intended_action: float = 0.95,
-        init_pos: Tuple[Tuple[int, int], ...] = [(1, 3), (1, 4), (1, 5)],
-        goal_group_config: List[GoalGroupConfig] = goal_group_config,
-        obj_group_config: List[ObjectGroupConfig] = obj_group_config,
+        init_pos: tuple[tuple[int, int], ...] = [(1, 3), (1, 4), (1, 5)],
+        goal_group_config: list[GoalGroupConfig] = goal_group_config,
+        obj_group_config: list[ObjectGroupConfig] = obj_group_config,
         reward_config: RewardConfig = reward_config,
         observation_option: Literal["final_goal", "intermediate_goal"] = "final_goal",
         width: int = 10,
         height: int = 9,
         max_steps: int = 100,
         actions_set: type[ActionsT] = NavigationActions,
-        agent_dir_to_vec: List[NDArray[np.int_]] = NAV_DIR_TO_VEC,
+        agent_dir_to_vec: list[NDArray[np.int_]] = NAV_DIR_TO_VEC,
         world: WorldT = LabyrinthWorld,
         render_mode: Literal["human", "rgb_array"] = "rgb_array",
     ) -> None:
@@ -578,26 +578,26 @@ class LabyrinthEnv(MultiGridEnv):
         p_intended_action : float = 0.95
             Probability of the intended action.
             Should be in the range [0, 1].
-        init_pos : Tuple[Tuple[int, int],...] = [(1, 3), (1, 4), (1, 5)]
+        init_pos : tuple[tuple[int, int],...] = [(1, 3), (1, 4), (1, 5)]
             Initial positions of the agents.
-        goal_group_config : List[GoalGroupConfig] = goal_group_config
+        goal_group_config : list[GoalGroupConfig] = goal_group_config
             Configuration of the goal groups.
             The following keys are required:
             - "group_index": int # Group index
-            - "pos": Tuple[Tuple[int, int], ...] # Positions of the goals
-            - "valid_agent_indices": Tuple[int, ...] # Indices of the agents that should be on the goal
-            - "called_actions": List[str] # Actions to call for the goal
+            - "pos": tuple[tuple[int, int], ...] # Positions of the goals
+            - "valid_agent_indices": tuple[int, ...] # Indices of the agents that should be on the goal
+            - "called_actions": list[str] # Actions to call for the goal
             - "action_obj_type": str # Type of the object to call the action
             - "action_obj_group": int # Group index of the object to call the action
-            - "next_goal": Union[int, Literal["terminal"]] # Next goal group index or "terminal"
-        obj_group_config : List[ObjectGroupConfig] = obj_group_config
+            - "next_goal": int | Literal["terminal"] # Next goal group index or "terminal"
+        obj_group_config : list[ObjectGroupConfig] = obj_group_config
             Configuration of the object groups.
             The following keys are required:
             - "obj_type": "block" | "zone" # Object type
             - "group_index": int # Group index
-            - "pos": Tuple[Tuple[int, int], ...] # Positions of the objects
-            - "obj_args": Dict[str, Any] # Arguments to initialize the object
-            - "group_args": Dict[str, Any] # Arguments to initialize the group and object
+            - "pos": tuple[tuple[int, int], ...] # Positions of the objects
+            - "obj_args": dict[str, Any] # Arguments to initialize the object
+            - "group_args": dict[str, Any] # Arguments to initialize the group and object
         reward_config : RewardConfig = reward_config
             Configuration of the rewards.
             The following keys are required:
@@ -618,9 +618,9 @@ class LabyrinthEnv(MultiGridEnv):
         actions_set : type[ActionsT] = NavigationActions
             Set of actions for the agents.
             By default, there are five actions: "stay", "up", "right", "down", and "left".
-        agent_dir_to_vec : List[NDArray[np.int_]] = NAV_DIR_TO_VEC
+        agent_dir_to_vec : list[NDArray[np.int_]] = NAV_DIR_TO_VEC
             Direction vectors for the agents.
-            The length of the List should be equal to the number of actions in the actions set.
+            The length of the list should be equal to the number of actions in the actions set.
         world : WorldT = LabyrinthWorld
             World for the environment.
         render_mode : Literal["human", "rgb_array"] = "rgb_array"
@@ -628,22 +628,22 @@ class LabyrinthEnv(MultiGridEnv):
         """
         self.num_agents: int = num_agents
         self.p_intended_action: float = p_intended_action
-        self.goal_group_config: List[GoalGroupConfig] = goal_group_config
-        self.obj_group_config: List[ObjectGroupConfig] = obj_group_config
+        self.goal_group_config: list[GoalGroupConfig] = goal_group_config
+        self.obj_group_config: list[ObjectGroupConfig] = obj_group_config
         self.reward_config: RewardConfig = reward_config
         self.observation_option: Literal["final_goal", "intermediate_goal"] = (
             observation_option
         )
-        self.init_pos: Tuple[Tuple[int, int], ...] = init_pos
+        self.init_pos: tuple[tuple[int, int], ...] = init_pos
 
         agent_view_size: int = 7
-        agents: List[Agent] = [
+        agents: list[Agent] = [
             Agent(world, i, agent_view_size, actions_set, agent_dir_to_vec)
             for i in range(num_agents)
         ]
 
-        self.final_goal: Tuple[Tuple[int, int], ...] = ()
-        self.goals: List[Tuple[Tuple[int, int], ...]] = []
+        self.final_goal: tuple[tuple[int, int], ...] = ()
+        self.goals: list[tuple[tuple[int, int], ...]] = []
         self.agent_goals: dict[int, list[tuple[int, int]]] = {}
 
         for goal_config in self.goal_group_config:
@@ -660,9 +660,9 @@ class LabyrinthEnv(MultiGridEnv):
                 self.final_goal = goal_config["pos"]
                 self.final_goal_group_index = goal_config["group_index"]
 
-        self.init_goal_group_indices: List[int] = self._find_first_goal_groups()
+        self.init_goal_group_indices: list[int] = self._find_first_goal_groups()
 
-        uncached_object_types: List[str] = ["agent"]
+        uncached_object_types: list[str] = ["agent"]
 
         super().__init__(
             agents=agents,
@@ -692,7 +692,7 @@ class LabyrinthEnv(MultiGridEnv):
         else:
             raise ValueError(f"Invalid observation option: {self.observation_option}")
 
-        observation_space = spaces.Dict(
+        observation_space = spaces.dict(
             {
                 str(i): spaces.Box(
                     low=np.zeros(2 * (num_goals + 1)),
@@ -705,13 +705,13 @@ class LabyrinthEnv(MultiGridEnv):
 
         return observation_space
 
-    def _find_first_goal_groups(self) -> List[int]:
-        goal_group_config: List[GoalGroupConfig] = self.goal_group_config
+    def _find_first_goal_groups(self) -> list[int]:
+        goal_group_config: list[GoalGroupConfig] = self.goal_group_config
 
         # 1. Construct the graph of the goal groups
         # Each tuple contains (goal_group_index, next_goal)
-        nodes: List[Tuple[int, Union[int, None]]] = []
-        final_nodes: List[Tuple[int, Union[int, None]]] = []
+        nodes: list[tuple[int, int | None]] = []
+        final_nodes: list[tuple[int, int | None]] = []
         for goal_group in goal_group_config:
             if goal_group["next_goal"] == "terminal":
                 final_nodes.append((goal_group["group_index"], None))
@@ -720,7 +720,7 @@ class LabyrinthEnv(MultiGridEnv):
 
         # 2. Find the first goal groups from the final goal groups
         while True:
-            next_nodes: List[Tuple[int, Union[int, None]]] = []
+            next_nodes: list[tuple[int, int | None]] = []
             for node in nodes:
                 for final_node in final_nodes:
                     if node[1] == final_node[0]:
@@ -742,14 +742,14 @@ class LabyrinthEnv(MultiGridEnv):
         self,
         *,
         seed: Optional[int] = None,
-        options: Optional[Dict] = None,
-    ) -> Tuple[NDArray[np.int_], Dict[str, Any]]:
+        options: Optional[dict] = None,
+    ) -> tuple[NDArray[np.int_], dict[str, Any]]:
         super().reset(seed=seed, options=options)
 
-        self.current_goal_group_indices: List[int] = self.init_goal_group_indices
+        self.current_goal_group_indices: list[int] = self.init_goal_group_indices
 
         obs = self._get_obs()
-        info: Dict[str, Any] = self._get_info()
+        info: dict[str, Any] = self._get_info()
 
         return obs, info
 
@@ -762,7 +762,7 @@ class LabyrinthEnv(MultiGridEnv):
         obj_group_dict["goal"] = {}
         for goal_config in self.goal_group_config:
             group_index: int = goal_config["group_index"]
-            positions: Tuple[Tuple[int, int], ...] = goal_config["pos"]
+            positions: tuple[tuple[int, int], ...] = goal_config["pos"]
 
             obj_group_dict["goal"][group_index] = GoalGroup(**goal_config)
 
@@ -784,7 +784,7 @@ class LabyrinthEnv(MultiGridEnv):
                 )
 
             elif obj_type == "zone":
-                args: Dict[str, Any] = obj_group_config["group_args"]
+                args: dict[str, Any] = obj_group_config["group_args"]
                 obj_group_dict[obj_type][group_index] = ZoneGroup(
                     obj_type,
                     obj_group_config["group_index"],
@@ -793,7 +793,7 @@ class LabyrinthEnv(MultiGridEnv):
                 )
 
             elif obj_type == "wall":
-                args: Dict[str, Any] = obj_group_config["group_args"]
+                args: dict[str, Any] = obj_group_config["group_args"]
                 obj_group_dict[obj_type][group_index] = WallGroup(
                     obj_type,
                     obj_group_config["group_index"],
@@ -816,10 +816,10 @@ class LabyrinthEnv(MultiGridEnv):
             self.place_agent(agent, pos)
 
     def _get_obs(self) -> NDArray[np.int_]:
-        obs: Dict[str, Any] = {}
+        obs: dict[str, Any] = {}
 
         for i, agent in enumerate(self.agents):
-            agent_obs: List[Tuple[int, int]] = [agent.pos]
+            agent_obs: list[tuple[int, int]] = [agent.pos]
 
             if self.observation_option == "final_goal":
                 agent_obs.append(self.final_goal[i])
@@ -837,36 +837,36 @@ class LabyrinthEnv(MultiGridEnv):
     def step(
         self,
         actions: NDArray[np.int_],
-    ) -> Tuple[NDArray[np.int_], float, bool, bool, Dict[str, Any]]:
+    ) -> tuple[NDArray[np.int_], float, bool, bool, dict[str, Any]]:
         self.step_count += 1
-        actual_actions: List[int] = self._move_agents(actions)
+        actual_actions: list[int] = self._move_agents(actions)
         obs = self._get_obs()
         reward: float = self.compute_reward(np.array(actual_actions))
         terminated: bool = (
             self._agents_detected() | self._agents_reached_terminal_goal()
         )
         truncated: bool = self.step_count >= self.max_steps
-        info: Dict[str, Any] = self._get_info()
+        info: dict[str, Any] = self._get_info()
 
         return obs, reward, terminated, truncated, info
 
-    def _move_agents(self, actions: List[int]) -> List[int]:
+    def _move_agents(self, actions: list[int]) -> list[int]:
         """
         Move agents based on the actions.
 
         Parameters
         ----------
-        actions : List[int]
+        actions : list[int]
             Actions to take.
 
         Returns
         -------
-        actual_actions : List[int]
+        actual_actions : list[int]
             Actual actions taken.
         """
         # Randomly generate the order of the agents by indices using self.np_random.
-        agent_indices: List[int] = list(range(self.num_agents))
-        actual_actions: List[int] = [0 for _ in range(self.num_agents)]
+        agent_indices: list[int] = list(range(self.num_agents))
+        actual_actions: list[int] = [0 for _ in range(self.num_agents)]
         self.np_random.shuffle(agent_indices)
         for i in agent_indices:
             actual_action: int = self._move_agent(actions[i], self.agents[i])
@@ -896,7 +896,7 @@ class LabyrinthEnv(MultiGridEnv):
         assert agent.pos is not None
 
         next_pos = agent.pos + agent.dir_to_vec[action]
-        available_pos: List[Position] = self._get_available_pos(agent)
+        available_pos: list[Position] = self._get_available_pos(agent)
 
         next_pos_in_available_pos: bool = False
         for pos in available_pos:
@@ -907,7 +907,7 @@ class LabyrinthEnv(MultiGridEnv):
                 pass
 
         if next_pos_in_available_pos:
-            action_probs: List[float] = []
+            action_probs: list[float] = []
             for pos in available_pos:
                 action_probs.append(
                     self.p_intended_action
@@ -917,7 +917,7 @@ class LabyrinthEnv(MultiGridEnv):
 
             # Normalize the action probabilities
             action_probs = np.array(action_probs) / np.sum(action_probs)
-            avail_pos_indices: List[int] = list(range(len(available_pos)))
+            avail_pos_indices: list[int] = list(range(len(available_pos)))
 
             next_pos_index = self.np_random.choice(avail_pos_indices, p=action_probs)
             next_pos = available_pos[next_pos_index]
@@ -927,7 +927,7 @@ class LabyrinthEnv(MultiGridEnv):
                 np.all(actual_action_vec == agent.dir_to_vec, axis=1)
             )[0][0]
 
-            next_cell: Union[WorldObjT, None] = self.grid.get(*next_pos)
+            next_cell: WorldObjT | None = self.grid.get(*next_pos)
             if next_cell is None:
                 agent.move(next_pos, self.grid, self.init_grid, bg_color=None)
             elif next_cell.can_overlap():
@@ -943,8 +943,8 @@ class LabyrinthEnv(MultiGridEnv):
 
         return actual_action
 
-    def _get_available_pos(self, agent: Agent) -> List[Position]:
-        possible_pos: List[Position] = []
+    def _get_available_pos(self, agent: Agent) -> list[Position]:
+        possible_pos: list[Position] = []
 
         for direction in agent.dir_to_vec:
             next_pos: Position = agent.pos + direction
@@ -993,9 +993,9 @@ class LabyrinthEnv(MultiGridEnv):
 
         # Change the targeted goals based on the reward option
         if self.reward_config["reward_option"] == "final_goal":
-            targeted_goals: List[int] = [self.final_goal_group_index]
+            targeted_goals: list[int] = [self.final_goal_group_index]
         elif self.reward_config["reward_option"] == "intermediate_goal":
-            targeted_goals: List[int] = self.current_goal_group_indices
+            targeted_goals: list[int] = self.current_goal_group_indices
         else:
             raise ValueError(
                 f"Invalid reward option: {self.reward_config['reward_option']}"
@@ -1007,7 +1007,7 @@ class LabyrinthEnv(MultiGridEnv):
         )
 
         # 2. Reward for each agent if it is on its assigned goal
-        agent_goal_statuses: List[int] = []
+        agent_goal_statuses: list[int] = []
         for agent in self.agents:
             agent_goal_statuses.append(
                 self._is_agent_on_assigned_goal(agent.pos, agent.index)
