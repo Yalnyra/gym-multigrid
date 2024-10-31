@@ -403,7 +403,7 @@ class LabyrinthEnv(MultiGridEnv):
     ## Observation
     The format of the observation is a dictionary of each agent's observation with the agent's index as the key.
     - The observation is the positions of the final goal and agents if the observation option is "final_goal".
-    - The observation is the positions of all the goals and agents if the observation option is "all_goals".
+    - The observation is the positions of all the goals and agents if the observation option is "intermediate_goal".
 
     ### Example
     ``` python
@@ -414,7 +414,7 @@ class LabyrinthEnv(MultiGridEnv):
         "2": Box(low=np.zeros(4), high=np.array([9, 8, 9, 8]), dtype=np.int_),
     })
 
-    # Observation option is "all_goals"
+    # Observation option is "intermediate_goal"
     observation_space = Dict({
         "0": Box(low=np.zeros(10), high=np.array([9, 8] * 5), dtype=np.int_),
         "1": Box(low=np.zeros(10), high=np.array([9, 8] * 5), dtype=np.int_),
@@ -559,7 +559,7 @@ class LabyrinthEnv(MultiGridEnv):
         goal_group_config: List[GoalGroupConfig] = goal_group_config,
         obj_group_config: List[ObjectGroupConfig] = obj_group_config,
         reward_config: RewardConfig = reward_config,
-        observation_option: Literal["final_goal", "all_goals"] = "final_goal",
+        observation_option: Literal["final_goal", "intermediate_goal"] = "final_goal",
         width: int = 10,
         height: int = 9,
         max_steps: int = 100,
@@ -605,10 +605,10 @@ class LabyrinthEnv(MultiGridEnv):
             - "movement_reward": float # Movement penalty for each agent if an action is not "stay"
             - "agent_on_goal_reward": float # Reward for each agent if it is on its assigned goal
             - "agent_move_away_from_goal_reward": float # Penalty for each agent if it moves away from its assigned goal though it was on it
-        observation_option : Literal["final_goal", "all_goals"] = "final_goal"
+        observation_option : Literal["final_goal", "intermediate_goal"] = "final_goal"
             Observation option.
             - "final_goal": The observation is the positions of the final goal and agents.
-            - "all_goals": The observation is the positions of all the goals and agents.
+            - "intermediate_goal": The observation is the positions of all the goals and agents.
         width : int = 10
             Width of the grid.
         height : int = 9
@@ -631,7 +631,9 @@ class LabyrinthEnv(MultiGridEnv):
         self.goal_group_config: List[GoalGroupConfig] = goal_group_config
         self.obj_group_config: List[ObjectGroupConfig] = obj_group_config
         self.reward_config: RewardConfig = reward_config
-        self.observation_option: Literal["final_goal", "all_goals"] = observation_option
+        self.observation_option: Literal["final_goal", "intermediate_goal"] = (
+            observation_option
+        )
         self.init_pos: Tuple[Tuple[int, int], ...] = init_pos
 
         agent_view_size: int = 7
@@ -674,7 +676,7 @@ class LabyrinthEnv(MultiGridEnv):
 
         if self.observation_option == "final_goal":
             num_goals: int = 1
-        elif self.observation_option == "all_goals":
+        elif self.observation_option == "intermediate_goal":
             num_goals: int = len(self.goals)
         else:
             raise ValueError(f"Invalid observation option: {self.observation_option}")
@@ -810,7 +812,7 @@ class LabyrinthEnv(MultiGridEnv):
 
             if self.observation_option == "final_goal":
                 agent_obs.extend(self.final_goal)
-            elif self.observation_option == "all_goals":
+            elif self.observation_option == "intermediate_goal":
                 for goal in self.goals:
                     agent_obs.extend(goal)
             else:
