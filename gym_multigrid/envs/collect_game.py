@@ -121,7 +121,7 @@ class CollectGameEnv(MultiGridEnv):
         return state, self.info
 
     def _reward(
-        self, current_agent: int, rewards: NDArray[np.float_], reward: float = 1
+        self, current_agent: int, rewards: NDArray[np.float64], reward: float = 1
     ) -> None:
         """
         Compute the reward to be given upon success
@@ -134,7 +134,7 @@ class CollectGameEnv(MultiGridEnv):
     def _handle_pickup(
         self,
         i,
-        rewards: NDArray[np.float_],
+        rewards: NDArray[np.float64],
         fwd_pos: Position,
         fwd_cell: WorldObjT | None,
     ) -> None:
@@ -150,7 +150,7 @@ class CollectGameEnv(MultiGridEnv):
 
     def move_agent(
         self,
-        rewards: NDArray[np.float_],
+        rewards: NDArray[np.float64],
         agent_index: int,
         next_cell: WorldObjT | None,
         next_pos: Position,
@@ -160,7 +160,7 @@ class CollectGameEnv(MultiGridEnv):
 
         Parameters
         ----------
-        rewards : NDArray[np.float_]
+        rewards : NDArray[np.float64]
             array of rewards for each agent
         agent_index : int
             index of agent to move
@@ -184,9 +184,9 @@ class CollectGameEnv(MultiGridEnv):
 
     def step(
         self, actions: list[int] | NDArray[np.int_]
-    ) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, bool, dict]:
+    ) -> tuple[NDArray[np.int_], NDArray[np.float64], bool, bool, dict]:
         order: list[int] = np.random.permutation(len(actions)).tolist()
-        rewards: NDArray[np.float_] = np.zeros(len(actions))
+        rewards: NDArray[np.float64] = np.zeros(len(actions))
         terminated: bool = False
         truncated: bool = False
         self.step_count += 1

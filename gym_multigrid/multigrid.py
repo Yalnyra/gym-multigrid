@@ -408,7 +408,7 @@ class MultiGridEnv(gym.Env):
 
     def step(
         self, actions: list[int] | NDArray[np.int_]
-    ) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, bool, dict]:
+    ) -> tuple[NDArray[np.int_], NDArray[np.float64], bool, bool, dict]:
         self.step_count += 1
 
         order = np.random.permutation(len(actions))
