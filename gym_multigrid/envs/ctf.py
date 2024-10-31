@@ -982,10 +982,10 @@ class CtfMvNEnv(MultiGridEnv):
         red_agent_locs: list[Position] = [
             agent.pos for agent in self.agents[self.num_blue_agents :]
         ]
-        blue_agent_locs_np: NDArray[np.float_] = np.array(blue_agent_locs)
-        red_agent_locs_np: NDArray[np.float_] = np.array(red_agent_locs)
+        blue_agent_locs_np: NDArray[np.float64] = np.array(blue_agent_locs)
+        red_agent_locs_np: NDArray[np.float64] = np.array(red_agent_locs)
 
-        distances: NDArray[np.float_] = np.linalg.norm(
+        distances: NDArray[np.float64] = np.linalg.norm(
             blue_agent_locs_np[:, np.newaxis] - red_agent_locs_np, axis=2
         )
 
