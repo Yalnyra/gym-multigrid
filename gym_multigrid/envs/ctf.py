@@ -1082,7 +1082,7 @@ class CtfMvNEnv(MultiGridEnv):
         return observation, reward, terminated, truncated, info
 
 
-class Ctf1v1Env(CtfMvNEnv):
+class CtF(CtfMvNEnv):
     """
     Environment for capture the flag game with one ego (blue) agent and one enemy (red) agent.
     """
@@ -1090,6 +1090,8 @@ class Ctf1v1Env(CtfMvNEnv):
     def __init__(
         self,
         map_path: str,
+        num_blue_agents: int,
+        num_red_agents: str,
         enemy_policy: Type[CtfPolicyT] | str = RwPolicy,
         enemy_policy_kwarg: dict[str, Any] = {},
         battle_range: float = 1,
@@ -1139,9 +1141,6 @@ class Ctf1v1Env(CtfMvNEnv):
         uncached_object_types : list[str] = ["red_agent", "blue_agent"]
             Types of objects that should not be cached.
         """
-
-        num_blue_agents: Final[int] = 1
-        num_red_agents: Final[int] = 1
         super().__init__(
             map_path=map_path,
             num_blue_agents=num_blue_agents,
