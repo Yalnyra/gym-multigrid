@@ -79,10 +79,28 @@ def test_ctf_pos_map_flattened() -> None:
     assert terminated or truncated
 
 
-def test_ctf_tensor() -> None:
+@pytest.mark.parametrize(
+    "enemy_policy, num_blue_agents, num_red_agents",
+    [
+        ("fight", 2, 1),
+        ("roomba", 2, 1),
+        ("fight", 1, 2),
+        ("roomba", 1, 2),
+    ],
+)
+def test_ctf_tensor(
+    enemy_policy: str, num_blue_agents: int, num_red_agents: int
+) -> None:
     map_path: str = "tests/assets/board_wall.txt"
 
-    env = Ctf1v1Env(map_path=map_path, render_mode="human", observation_option="tensor")
+    env = CtfMvNEnv(
+        map_path=map_path,
+        render_mode="human",
+        observation_option="tensor",
+        num_blue_agents=num_blue_agents,
+        num_red_agents=num_red_agents,
+        enemy_policies=enemy_policy,
+    )
     obs, _ = env.reset()
     frames = [env.render()]
 
