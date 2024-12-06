@@ -739,10 +739,10 @@ class RoombaPolicy(CtfPolicy):
             )
             opponent_pos: list[Position] = []
 
-            for pos in get_unterminated_opponent_pos(observation, opponent_agent):
-                opp_dist: int = np.linalg.norm(np.array(pos) - np.array(curr_pos))
+            for op_pos in get_unterminated_opponent_pos(observation, opponent_agent):
+                opp_dist: int = np.linalg.norm(np.array(op_pos) - np.array(curr_pos))
                 if opp_dist <= self.enemy_range:
-                    opponent_pos.append(pos)
+                    opponent_pos.append(op_pos)
                 else:
                     pass
 
@@ -763,11 +763,18 @@ class RoombaPolicy(CtfPolicy):
                     else:
                         pass
                 else:
-                    # If the agent is its own territory, move up if the opponent is in the lower half of the field.
+                    # If the agent is its own territory, move up if the opponent is in the upper half of the field.
                     if curr_pos[1] > self.field_map.shape[1] / 2:
                         action = self.action_set.down
-                    else:
+                    elif curr_pos[1] < self.field_map.shape[1] / 2:
                         action = self.action_set.up
+                    elif curr_pos[0] > self.field_map.shape[0] / 2:
+                        action = self.action_set.right
+                    elif curr_pos[0] < self.field_map.shape[0] / 2:
+                        action = self.action_set.left
+                    else:
+                        action = self.act_randomly()
+
             else:
                 pass
 
