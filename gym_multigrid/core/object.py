@@ -160,6 +160,15 @@ class Floor(WorldObj):
         fill_coords(img, point_in_rect(0, 1, 0, 1), self.world.COLORS[self.color])
 
 
+class Zone(Floor):
+    """
+    Alias for Floor
+    """
+
+    def __init__(self, world: WorldT, color: str = "blue", type: str = "zone"):
+        super().__init__(world, color, type)
+
+
 class Lava(WorldObj):
     def __init__(self, world: WorldT):
         super().__init__(world, "lava", "red")
@@ -382,3 +391,56 @@ class Flag(WorldObj):
             self.world.COLORS[self.color],
             self.world.COLORS[self.bg_color] if self.bg_color else None,
         )
+
+
+class AgentGoal(WorldObj):
+    def __init__(
+        self,
+        world: WorldT,
+        accepting_agent_idx: int,
+        goal_group: int,
+        type: str = "goal",
+        color: str = "yellow",
+        bg_color: str | None = None,
+    ):
+        super().__init__(world, type, color, bg_color)
+        self.accepting_agent_idx: int = accepting_agent_idx
+        self.goal_group: int = goal_group
+
+    def can_overlap(self):
+        return True
+
+    def render(self, img):
+        fill_coords(img, point_in_circle(0.5, 0.5, 0.31), self.world.COLORS[self.color])
+
+
+class Block(WorldObj):
+    def __init__(
+        self,
+        world: WorldT,
+    ):
+        super().__init__(world, "block", color="light_grey")
+
+        self.locked: bool = True
+
+    def can_overlap(self) -> bool:
+        return not self.locked
+
+    def open(self) -> None:
+        self.locked = False
+        self.color = "grey"
+
+    def see_behind(self) -> bool:
+        return False
+
+    def render(self, img):
+        c = self.world.COLORS[self.color]
+
+        # Door frame and door
+        fill_coords(img, point_in_rect(0.00, 1.00, 0.00, 1.00), c)
+        fill_coords(img, point_in_rect(0.04, 0.96, 0.04, 0.96), (0, 0, 0))
+        fill_coords(img, point_in_rect(0.08, 0.92, 0.08, 0.92), c)
+        fill_coords(img, point_in_rect(0.12, 0.88, 0.12, 0.88), (0, 0, 0))
+
+        # Draw door handle
+        fill_coords(img, point_in_circle(cx=0.75, cy=0.50, r=0.08), c)

@@ -43,7 +43,7 @@ class MultiGridEnv(gym.Env):
         highlight_visible_cells: bool = False,
         tile_size: int = TILE_PIXELS,
     ) -> None:
-        self.agents: list[AgentT] = agents
+        self.agents = agents
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode: Literal["human", "rgb_array"] = render_mode
         self.uncached_object_types: list[str] = uncached_object_types
