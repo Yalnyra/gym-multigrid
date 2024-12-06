@@ -765,13 +765,13 @@ class RoombaPolicy(CtfPolicy):
                 else:
                     # If the agent is its own territory, move up if the opponent is in the upper half of the field.
                     if curr_pos[1] > self.field_map.shape[1] / 2:
-                        action = self.action_set.up
-                    elif curr_pos[1] < self.field_map.shape[1] / 2:
                         action = self.action_set.down
+                    elif curr_pos[1] < self.field_map.shape[1] / 2:
+                        action = self.action_set.up
                     elif curr_pos[0] > self.field_map.shape[0] / 2:
-                        action = self.action_set.left
-                    elif curr_pos[0] < self.field_map.shape[0] / 2:
                         action = self.action_set.right
+                    elif curr_pos[0] < self.field_map.shape[0] / 2:
+                        action = self.action_set.left
                     else:
                         action = self.act_randomly()
 
