@@ -654,11 +654,18 @@ class RoombaPolicy(CtfPolicy):
 
         Parameters
         ----------
+        enemy_range : int = 4
+            Range to detect the enemy.
+        flag_range : int = 5
+            Range to detect the flag.
         field_map : numpy.typing.NDArray | None = None
             Field map of the environment.
             Make sure to set it to the field map of the environment.
         actions : gym_multigrid.core.agent.ActionsT = CtfActions
             Actions available to the agent.
+        random_generator : numpy.random.Generator | None = None
+            Random number generator.
+            Replace it with the environment's random number generator if needed.
         randomness : float = 0.15
             Probability of taking a random action instead of an optimal action.
         ego_agent : Literal["red", "blue"] = "red"
