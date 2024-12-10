@@ -624,7 +624,7 @@ class RoombaPolicy(CtfPolicy):
     2. Scan the area with enemy_range:
         - Enemy in the direction of movement
             - If I'm in enemy's territory: reverse direction
-            - Continue
+            - Else chase the enemy.
         - Else: continue moving in the direction
     3. Random exploration
         - 0.1 chance switching direction of movement
@@ -739,7 +739,7 @@ class RoombaPolicy(CtfPolicy):
                 action = self.dir_to_action(action_dir)
 
             else:
-                action = self.previous_action
+                action = self.act_randomly()
 
             # 2. Scan the area with enemy_range
             opponent_agent: Literal["red_agent", "blue_agent"] = (
@@ -762,31 +762,36 @@ class RoombaPolicy(CtfPolicy):
                     else observation["blue_territory"]
                 ).reshape(-1, 2)
                 if position_in_positions(curr_pos, opponent_territory):
-                    if distance_area_point(
-                        new_pos, opponent_pos
-                    ) <= distance_area_point(curr_pos, opponent_pos):
+                    if distance_area_point(new_pos, opponent_pos) < distance_area_point(
+                        curr_pos, opponent_pos
+                    ):
                         action = self.dir_to_action(
                             np.array(curr_pos) - np.array(new_pos)
                         )
                     else:
                         pass
                 else:
-                    # If the agent is its own territory, move up if the opponent is in the upper half of the field.
-                    if curr_pos[1] > self.field_map.shape[1] / 2:
-                        action = self.action_set.down
-                    elif curr_pos[1] < self.field_map.shape[1] / 2:
-                        action = self.action_set.up
-                    elif curr_pos[0] > self.field_map.shape[0] / 2:
-                        action = self.action_set.right
-                    elif curr_pos[0] < self.field_map.shape[0] / 2:
-                        action = self.action_set.left
-                    else:
-                        action = self.act_randomly()
+                    # If the agent is its own territory, chase the opponent
+                    target: Position = closest_area_pos(curr_pos, opponent_pos)
+                    # Convert start and target to tuple from NDArray
+                    start: Position = curr_pos
+                    shortest_path = a_star(
+                        tuple(start),
+                        tuple(target),
+                        self.field_map,
+                        self.world,
+                        self.avoided_objects,
+                    )
+                    optimal_loc: Position = (
+                        shortest_path[1] if len(shortest_path) > 1 else target
+                    )
+                    action_dir: NDArray = np.array(optimal_loc) - np.array(curr_pos)
+                    action = self.dir_to_action(action_dir)
 
             else:
                 pass
 
-            # 3. Check if there is an obstacle in the direction of movement
+            # Check if there is an obstacle in the direction of movement
             if (
                 self.world.IDX_TO_OBJECT[self.field_map[new_pos[0], new_pos[1]]]
                 == "obstacle"
