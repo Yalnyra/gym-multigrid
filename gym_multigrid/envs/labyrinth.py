@@ -692,7 +692,7 @@ class LabyrinthEnv(MultiGridEnv):
         else:
             raise ValueError(f"Invalid observation option: {self.observation_option}")
 
-        observation_space = spaces.dict(
+        observation_space = spaces.Dict(
             {
                 str(i): spaces.Box(
                     low=np.zeros(2 * (num_goals + 1)),
