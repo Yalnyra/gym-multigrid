@@ -39,6 +39,14 @@ ObservationOption: TypeAlias = Literal[
 class CtfMvNEnv(MultiGridEnv):
     """
     Environment for capture the flag with multiple agents with N blue agents and M red agents.
+
+    Actions
+    -------
+    - stay = 0
+    - left = 1
+    - down = 2
+    - right = 3
+    - up = 4
     """
 
     def __init__(
@@ -816,6 +824,7 @@ class CtfMvNEnv(MultiGridEnv):
                 if self.num_red_agents == self.game_stats["defeated_red_agents"]
                 else -1
             ),
+            "red_actions": [0 for _ in range(self.num_red_agents)],
         } | self.ep_game_stats
         return info
 
@@ -1072,7 +1081,10 @@ class CtfMvNEnv(MultiGridEnv):
         reward -= self.step_penalty
 
         observation: Observation = self._get_obs()
-        info: dict[str, float] = self._get_info()
+        info: dict[str, Any] = self._get_info()
+
+        # Add red agent actions to the info dictionary.
+        info["red_actions"] = red_actions
 
         if terminated or truncated:
             self.ep_game_stats = self.game_stats
