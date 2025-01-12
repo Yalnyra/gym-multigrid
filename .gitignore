@@ -3,7 +3,10 @@ wildfire-0.gif
 *.zip
 *.torch
 *.png
+*.mp4
+*.zip
 *.npy
 runs/*
 ppo_random_collect_tensorboard/*
+wandb/*
 .DS_Store
