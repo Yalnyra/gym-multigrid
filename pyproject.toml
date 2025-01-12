@@ -18,6 +18,16 @@ imageio = ">=2.28.1"
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.3.1"
 
+[tool.pyright]
+exclude = ["**/node_modules",
+    "**/__pycache__",
+    "src/experimental",
+    "src/typestubs",
+    "checkpoints",
+    "wandb",
+    "**/.conda",
+]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

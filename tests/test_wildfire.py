@@ -1,6 +1,5 @@
 import sys
 import os
-import pytest
 import numpy as np
 import gymnasium as gym
 
@@ -12,6 +11,7 @@ def test_wildfire() -> None:
     """Function to test the environment's functionality. Runs episodes with random agents in the Wildfire environment and save episode renders as GIFs."""
     env = gym.make(
         "wildfire-v0",
+        render_mode='rgb_array',
         alpha=0.3,
         beta=0.8,
         max_episode_steps=1,
@@ -35,9 +35,7 @@ def test_wildfire() -> None:
 
     for ep in range(num_episodes):
         while True:
-            actions = {
-                f"{a.index}": np.random.choice(list(env.actions)) for a in env.agents
-            }
+            actions = env.action_space.sample()
             obs, reward, terminated, truncated, _ = env.step(actions)
             steps += 1
             frames.append(env.render())

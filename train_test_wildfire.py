@@ -3,7 +3,9 @@ import time
 import sys
 import numpy as np
 import gymnasium as gym
-from sbx import PPO, DQN, TQC, CrossQ, DroQ
+import gym_multigrid
+from sbx import DQN, TQC, CrossQ
+from stable_baselines3 import PPO
 from sb3_contrib import RecurrentPPO, ARS
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import (
@@ -11,16 +13,13 @@ from stable_baselines3.common.callbacks import (
     EvalCallback,
     StopTrainingOnNoModelImprovement,
 )
-from tensorboard import TensorboardCallback
+from tests.tensorboard.log_callback import TensorboardCallback
 from gymnasium.wrappers import RescaleAction, RecordVideo
 import wandb
 from wandb.integration.sb3 import WandbCallback
 
-# fix wandb.save() without admin privilege
-import shutil
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from gym_multigrid.utils.misc import save_frames_as_gif
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def create_env(render_mode=None, **kwaargs):
@@ -39,9 +38,9 @@ def create_env(render_mode=None, **kwaargs):
         cooperative_reward=True,
         render_selfish_region_boundaries=True,
         log_selfish_region_metrics=True,
-        selfish_region_xmin=[8, 8, 8],
-        selfish_region_xmax=[6, 6, 6],
-        selfish_region_ymin=[4, 4, 4],
+        selfish_region_xmin=[2, 2, 2],
+        selfish_region_xmax=[8, 8, 8],
+        selfish_region_ymin=[2, 2, 2],
         selfish_region_ymax=[8, 8, 8],
     )
     return env
@@ -70,19 +69,20 @@ def model_PPO(env, **PPO_kwaargs):
     nn_t = (128, 128, 128)
     policy_kwargs = dict(net_arch=dict(pi=nn_t, vf=nn_t))
     return PPO(
-        "MlpPolicy",
+        "MultiInputPolicy",
         env,
         verbose=0,
         learning_rate=1e-4,
         n_steps=2048,
         batch_size=128,
         n_epochs=10,
-        gamma=0.98,
+        gamma=0.99,
         policy_kwargs=policy_kwargs,
         gae_lambda=0.95,
         clip_range=0.2,
-        ent_coef="auto_0.05",
-        tensorboard_log="./ppo_pyflyt_tensorboard/",
+        # ent_coef="auto_0.05",
+        tensorboard_log=config["tensorboard"]
+        # tensorboard_log="./out/logs/wildfire/",
     )
 
 
@@ -101,7 +101,7 @@ def model_ARS(env, **ARS_kwaargs):
         n_eval_episodes=1000,
         policy_kwargs=policy_kwargs,
         stats_window_size=100,
-        tensorboard_log="./wildfire_tensorboard/",
+        tensorboard_log=f"{config['tensorboard']}",
     )
 
 
@@ -115,7 +115,7 @@ def model_CrossQ(env, **CrossQ_kwaargs):
         gamma=0.99,
         use_sde=True,
         ent_coef="auto_0.05",
-        tensorboard_log="./wildfire_tensorboard/",
+        tensorboard_log=f"{config['tensorboard']}",
     )
 
 
@@ -131,7 +131,7 @@ def model_TQC(env, **TQC_kwaargs):
         top_quantiles_to_drop_per_net=2,
         use_sde=True,
         ent_coef="auto_0.05",
-        tensorboard_log="./wildfire_tensorboard/",
+        tensorboard_log=f"{config['tensorboard']}",
     )
 
 def model_DQN(env, **DQN_kwaargs):
@@ -177,16 +177,16 @@ def setup_callbacks(eval_env, **kwaargs):
     cutoff_callback = StopTrainingOnNoModelImprovement(
         max_no_improvement_evals=10, min_evals=30
     )
+    tensorboard_callback = TensorboardCallback()
     eval_callback = EvalCallback(
         eval_env,
-        callback_after_eval=cutoff_callback,
+        callback_after_eval=[cutoff_callback, tensorboard_callback],
         best_model_save_path="./logs/",
         deterministic=True,
         log_path="./logs/",
         eval_freq=5000,
         verbose=2,
     )
-    tensorboard_callback = TensorboardCallback()
     log_callback = WandbCallback(
         model_save_freq=10000, model_save_path=f"{config['model_save_path']}"
     )
@@ -195,7 +195,7 @@ def setup_callbacks(eval_env, **kwaargs):
 
 
 def train_model(model, callbacks, **kwaargs):
-    timesteps = 500_000
+    timesteps = 300_000
     model.learn(
         total_timesteps=timesteps,
         tb_log_name=f"{config['run_id']}",
@@ -218,14 +218,14 @@ def test_model(env, model, **kwaargs):
         ep_reward = 0.
         while not terminated or not truncated:
             inference_dt = time.time()
-            actions = env.action_space.sample()
-            # actions, states = model.predict(obs, deterministic=True)
+            # actions = env.action_space.sample()
+            actions, states = model.predict(obs, deterministic=True)
             inference_dt = 1.0 / (time.time() - inference_dt + 1e-6)
             obs, reward, terminated, truncated, _ = env.step(actions)
-            ep_reward += float(reward['0'])
+            ep_reward += float(reward)
             frac_burned = env.unwrapped.burnt_trees / (wandb.config["world_size"] ** 2)
             print(
-                f"Observation: {obs}, Max action: {np.max(actions.values())} Reward: {reward}, burnt trees %: {frac_burned}"
+                f"Observation: {obs}, Max action: {np.max(actions)} Reward: {reward}, burnt trees %: {frac_burned}"
                 # , Inference time in ms: {inference_dt}"
             )
 
@@ -262,17 +262,13 @@ def train(model_class, model_construct: callable, config: dict):
     eval_env = wrap_env(eval_env)
 
     # Create the model from model_construct func
-    model = model_construct(env=train_env)
+    model = model_construct(env=train_env, config=config)
     if not config["from_scratch"]:
         model = load_model(train_env, model_path, model_class)
     # Setup callbacks
     callbacks = setup_callbacks(eval_env, config=config)
     # Train the model
     train_model(model, callbacks, config=config)
-    shutil.copy(
-        f"{model_path}/model.zip",
-        os.path.join(wandb.run.dir, f"{model_path}/model.zip"),
-    )
     eval_env.close()
 
 
@@ -282,7 +278,7 @@ def test(model_class, **kwaargs):
 
     # Load the trained model from model_class constructor
 
-    model = load_model(test_env, config["model_save_path"], model_class)
+    model = load_model(test_env, f'{config["model_save_path"]}/model.zip', model_class)
     wandb.log_model(path=f'./{config["run_id"]}',name=f'wandb_model.zip')
 
     # Test the trained model
@@ -305,15 +301,15 @@ def test(model_class, **kwaargs):
 # Change the algorithm name here
 if __name__ == "__main__":
     config = {
-        "algorithm": "Random",
-        "run_id": "dqn_test_v0",
+        "algorithm": "PPO",
+        "run_id": "ppo_test_v0",
         "from_scratch": True,
         "job_type": "test",
         "n_episodes": 100,
         "n_env": 1,
         "world_size": 17,
-        "tensorboard": "out/logs/wildfire/",
-        "model_save_path":"out/models/wildfire/",
+        "tensorboard": "./out/logs/wildfire/",
+        "model_save_path":"./out/models/wildfire/",
     }
 
     with wandb.init(
@@ -326,6 +322,6 @@ if __name__ == "__main__":
         # python -c "import wandb; print(wandb.util.generate_id())"
         # id="8up8c0w8",
     ):
-        train(DQN,model_DQN, config)
-        # test(, config = config)
+        # train(PPO,model_PPO, config)
+        test(PPO, config = config)
         # test_random(PPO, config=config)
