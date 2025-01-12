@@ -581,7 +581,7 @@ class WildfireEnv(MultiGridEnv):
         )
         return state
 
-    def reset(self, seed: int | None = None, state=None):
+    def reset(self, seed: int | None = None, state=None, options=None):
         """Reset the state of the environment
 
         Parameters
