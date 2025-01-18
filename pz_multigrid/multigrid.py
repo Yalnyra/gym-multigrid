@@ -1,7 +1,8 @@
+import functools
 import math
 from typing import Literal, Type, TypeVar
 import numpy as np
-import gymnasium as gym
+import pettingzoo as pz
 from gymnasium import spaces
 import random
 
@@ -15,17 +16,23 @@ from gym_multigrid.utils.window import Window
 from gym_multigrid.core.constants import *
 
 
+ObsType = TypeVar("ObsType")
+ActionType = TypeVar("ActionType")
+AgentID = TypeVar("AgentID", int, str)
 MultiGridEnvT = TypeVar("MultiGridEnvT", bound="MultiGridEnv")
 
 
-class MultiGridEnv(gym.Env):
+class MultiGridEnv(pz.ParallelEnv):
     """
     2D grid world game environment
     """
 
     metadata = {"render_modes": ["human", "rgb_array"], "video.frames_per_second": 10}
 
-    
+    # Created
+    _np_random: np.random.Generator | None = None
+    # will be set to the "invalid" value -1 if the seed of the currently set rng is unknown
+    _np_random_seed: int | None = None
 
     def __init__(
         self,
@@ -43,13 +50,18 @@ class MultiGridEnv(gym.Env):
         uncached_object_types: list[str] = [],
         np_random_seed: int | None = None,
     ):
-        self.agents: list[AgentT] = agents
+        # List of type Agent, not int[]
+        self.agents_storage = agents
+        # Actual int[] list of idx
+        self.agents: list[AgentID] = [i for i, _ in enumerate(agents)]
+        self.possible_agents = self.agents
+
         self.render_mode = render_mode
-        self.uncahed_object_types = uncached_object_types
+        self.uncached_object_types = uncached_object_types
         # Does the agents have partial or full observation?
         self.partial_obs = partial_obs
         self.agent_view_size = agent_view_size
-
+        self._np_random_seed = np_random_seed
 
         # Can't set both grid_size and width/height
         if grid_size:
@@ -66,17 +78,16 @@ class MultiGridEnv(gym.Env):
         self.actions = actions_set
 
         # Actions are discrete integer values
-        self.action_space = spaces.Discrete(len(self.actions))
+        # self.action_space: spaces.Discrete = self.action_space(actions_set)
 
         self.world = world
 
-        self.observation_space: spaces.Box | spaces.Dict = self._set_observation_space()
+        # self.observation_space: spaces.Box | spaces.Dict = self.observation_space()
 
         if self.observation_space is spaces.Box:
             self.ob_dim = np.prod(self.observation_space.shape)
         else:
             pass
-        self.ac_dim = self.action_space.n
 
         # Range of possible rewards
         self.reward_range = (0, 1)
@@ -93,7 +104,9 @@ class MultiGridEnv(gym.Env):
         # Define the empty grid. _gen_grid is supposed to fill this up
         self.grid = Grid(width, height, world)
 
-    def _set_observation_space(self) -> spaces.Box | spaces.Dict:
+    # @property
+    @functools.lru_cache(maxsize=None)
+    def observation_space(self, agent=None) -> spaces.Box | spaces.Dict:
         if self.partial_obs:
             observation_space = spaces.Box(
                 low=0,
@@ -116,23 +129,44 @@ class MultiGridEnv(gym.Env):
 
         return observation_space
 
-    def reset(self, seed: int | None = None, state=None):
-        super().reset(seed=seed)
+    @functools.lru_cache(maxsize=None)
+    def action_space(self, agent=None):
+        return spaces.Discrete(len(self.actions), start=0)
+    
+    # def observe(self, agent):
+    #     if self.partial_obs:
+    #         ob = self.gen_obs()
+    #     else:
+    #         ob = self.grid.encode_for_agents(
+    #                 world=self.world, agent_pos=self.agents[agent].pos
+    #             )
+
+    #     return self.world.normalize_obs * ob
+
+    def reset(
+        self,
+        seed: int | None = None,
+        options: dict | None = None,
+    ) -> tuple[dict[AgentID, object], dict[AgentID, dict]]:
+        """Resets the environment.
+
+        And returns a dictionary of observations (keyed by the agent name)
+        """
         # Generate a new random grid at the start of each episode
         # To keep the same grid for each episode, call env.seed() with
         # the same seed before calling env.reset()
-        if state is not None:
-            self._gen_grid(self.width, self.height, state)
+        if options is not None:
+            self._gen_grid(self.width, self.height, options['state'])
         else:
             self._gen_grid(self.width, self.height)
 
         # These fields should be defined by _gen_grid
-        for a in self.agents:
+        for a in self.agents_storage:
             assert a.pos is not None
             assert a.dir is not None
 
         # Item picked up, being carried, initially nothing
-        for a in self.agents:
+        for a in self.agents_storage:
             a.carrying = None
 
         # Step count since episode start
@@ -143,11 +177,49 @@ class MultiGridEnv(gym.Env):
             obs = self.gen_obs()
         else:
             obs = [
-                self.grid.encode_for_agents(agent_pos=self.agents[i].pos)
+                self.grid.encode_for_agents(agent_pos=self.agents_storage[i].pos)
                 for i in range(len(self.agents))
             ]
-        obs = [self.world.normalize_obs * ob for ob in obs]
-        return obs
+        obs = {idx : self.world.normalize_obs * ob for idx, ob in enumerate(obs)}
+        info = {a: {} for a in self.agents}
+        return obs, info # type: ignore
+    
+    @property
+    def np_random_seed(self) -> int:
+        """Returns the environment's internal :attr:`_np_random_seed` that if not set will first initialise with a random int as seed.
+
+        If :attr:`np_random_seed` was set directly instead of through :meth:`reset` or :meth:`set_np_random_through_seed`,
+        the seed will take the value -1.
+
+        Returns:
+            int: the seed of the current `np_random` or -1, if the seed of the rng is unknown
+        """
+        if self._np_random_seed is None:
+            self._np_random, self._np_random_seed = seeding.np_random()
+        return self._np_random_seed
+
+    @property
+    def np_random(self) -> np.random.Generator:
+        """Returns the environment's internal :attr:`_np_random` that if not set will initialise with a random seed.
+
+        Returns:
+            Instances of `np.random.Generator`
+        """
+        if self._np_random is None:
+            self._np_random, self._np_random_seed = seeding.np_random()
+        return self._np_random
+
+    @np_random.setter
+    def np_random(self, value: np.random.Generator):
+        """Sets the environment's internal :attr:`_np_random` with the user-provided Generator.
+
+        Since it is generally not possible to extract a seed from an instance of a random number generator,
+        this will also set the :attr:`_np_random_seed` to `-1`, which is not valid as input for the creation
+        of a numpy rng.
+        """
+        self._np_random = value
+        # Setting a numpy rng with -1 will cause a ValueError
+        self._np_random_seed = -1
 
     @property
     def steps_remaining(self):
@@ -190,9 +262,9 @@ class MultiGridEnv(gym.Env):
 
         return str
 
-    def _gen_grid(self, width, height):
+    def _gen_grid(self, width, height, state=None):
+        raise NotImplementedError("_gen_grid needs to be implemented by each environment")
         self.grid = Grid(width, height, self.world)
-        assert False, "_gen_grid needs to be implemented by each environment"
 
     def _handle_pickup(self, i, rewards, fwd_pos, fwd_cell):
         pass
@@ -315,7 +387,7 @@ class MultiGridEnv(gym.Env):
             )
 
             # Don't place the object on top of another object
-            if self.grid.get(*pos) != None:
+            if self.grid.get(*pos) is not None:
                 continue
 
             # Check if there is a filtering criterion
@@ -487,10 +559,10 @@ class MultiGridEnv(gym.Env):
         grids = []
         vis_masks = []
 
-        for a in self.agents:
+        for a in self.agents_storage:
             topX, topY, botX, botY = a.get_view_exts()
 
-            grid = self.grid.slice(self.world, topX, topY, a.view_size, a.view_size)
+            grid = self.grid.slice(topX, topY, a.view_size, a.view_size)
 
             for i in range(a.dir + 1):
                 grid = grid.rotate_left()
@@ -498,7 +570,7 @@ class MultiGridEnv(gym.Env):
             # Process occluders and visibility
             # Note that this incurs some performance cost
             if not self.see_through_walls:
-                vis_mask = grid.process_vis(
+                vis_mask = grid.process_vis(grid,
                     agent_pos=(a.view_size // 2, a.view_size - 1)
                 )
             else:
@@ -593,7 +665,7 @@ class MultiGridEnv(gym.Env):
         img = self.grid.render(
             tile_size,
             highlight_masks=highlight_masks if highlight else None,
-            uncached_object_types=self.uncahed_object_types,
+            uncached_object_types=self.uncached_object_types,
         )
 
         if self.render_mode == "human":
