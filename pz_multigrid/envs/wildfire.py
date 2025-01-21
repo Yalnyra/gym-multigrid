@@ -5,6 +5,7 @@ import functools
 from typing import TypeVar
 import random
 from gymnasium.spaces import Box, Dict, Discrete
+from pettingzoo.utils.conversions import parallel_to_aec_wrapper
 import numpy as np
 from pz_multigrid.multigrid import MultiGridEnv
 from gym_multigrid.core.world import WildfireWorld
@@ -25,6 +26,9 @@ from gym_multigrid.utils.misc import (
 
 AgentID = TypeVar("AgentID", int, str)
 
+
+def aec_env(env:MultiGridEnv):
+    return parallel_to_aec_wrapper(env)
 
 class WildfireEnv(MultiGridEnv):
     """Grid environment which simulates dynamics of unmanned aerial vehicles (UAVs) fighting a spreading wildfire"""
@@ -730,7 +734,7 @@ class WildfireEnv(MultiGridEnv):
         self.step_count += 1
         terminated = np.zeros(len(self.agents))
         truncated = np.zeros(len(self.agents))
-        print(f"Selected actions: {actions}")
+        # print(f"Selected actions: {actions}")
         # Move agents sequentially, in random order
         order = np.random.permutation(len(self.agents))
         for i in order:

@@ -40,8 +40,10 @@ class TensorboardCallback(BaseCallback):
     def _on_step(self) -> bool:
         # obs, reward, done, info = env.step(action)
         # dt_step_target += 1
-        frac_burned = self.training_env.get_attr('burnt_trees') / (wandb.config["world_size"] ** 2)
-        self.logger.record('train/burnt trees', frac_burned)
+        info = self.locals.get('info')
+        if info is not None:
+            frac_burned = info[0]['burnt_trees'] / (wandb.config["world_size"] ** 2)
+            self.logger.record('train/burnt trees', frac_burned)
         return True
     
     def _on_training_end(self):

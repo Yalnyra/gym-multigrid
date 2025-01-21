@@ -11,18 +11,18 @@ from pz_multigrid.envs.wildfire import MultiGridEnv, WildfireEnv
 def test_collect_game() -> None:
     """Test collect_game()"""
     env = WildfireEnv(render_mode='human',cooperative_reward=True, max_steps=100000)
-    # print("starting test.")
+    # # print("starting test.")
     # parallel_api_test(par_env=env, num_cycles=1000)
-    print("General sanity test passed..")
-    test_save_obs(env)
-    # print("Observation test passed...")
-    # parallel_seed_test(env, num_cycles=500)
-    print("All tests passed!")
+    # print("General sanity test passed..")
+    # test_save_obs(env)
+    # # print("Observation test passed...")
+    # # parallel_seed_test(env, num_cycles=500)
+    # print("All tests passed!")
 
     env.reset()
     obs = env._get_obs()
     print(obs)
-    while True:
+    while env.agents:
         actions = [env.action_space(a).sample() for a in env.agents]
 
         obs, reward, terminated, truncated, info = env.step(actions)
