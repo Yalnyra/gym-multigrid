@@ -7,9 +7,9 @@ import pettingzoo as pz
 from pettingzoo.utils.conversions import parallel_to_aec
 import gym_multigrid
 from pz_multigrid.envs import WildfireEnv
-from sbx import DQN, TQC, CrossQ
-# from sbx import PPO
-from stable_baselines3 import PPO
+from sbx import DQN, TQC, CrossQ, TD3
+from sbx import PPO
+# from stable_baselines3 import PPO
 from sb3_contrib import RecurrentPPO, ARS
 from stable_baselines3.common.callbacks import (
     CheckpointCallback,
@@ -36,7 +36,7 @@ def create_env(render_mode=None, **kwaargs):
         num_agents=4,
         # tuple(np.random.uniform(low=1, high=16, size=(3, 2)))
         agent_start_positions=((4, 6), (10, 12), (8, 6), (2, 1)),
-        size=wandb.config["world_size"],
+        size=config["world_size"],
         initial_fire_size=3,
         cooperative_reward=True,
         render_selfish_region_boundaries=True,
@@ -60,6 +60,8 @@ def wrap_env(env, **kwaargs):
     #     )
     # Add zero observation for agents upon death, useful with dynamic agents
     # env = black_death_v3(env)
+    env = pettingzoo_env_to_vec_env_v1(env)
+    env = concat_vec_envs_v1(env, config['n_env'], num_cpus=1, base_class="stable_baselines3")
     return env
 
 
@@ -161,8 +163,14 @@ def model_RPPO(env, **RPPO_kwaargs):
         gae_lambda=0.95,
         clip_range=0.2,
         ent_coef=0.05,
-        tensorboard_log="./wildfire_tensorboard/",
+        tensorboard_log=config["tensorboard"],
     )
+
+def model_TD3(env, **kwaargs):
+    return TD3(
+        "MlpPolicy",
+        env=env,
+        tensorboard_log=config["tensorboard"])
 
 
 def setup_callbacks(eval_env, **kwaargs):
@@ -192,7 +200,7 @@ def setup_callbacks(eval_env, **kwaargs):
 
 
 def train_model(model, callbacks, **kwaargs):
-    timesteps = 500_000
+    timesteps = 3_000_000
     model.learn(
         total_timesteps=timesteps,
         tb_log_name=f"{config['run_id']}",
@@ -212,22 +220,26 @@ def test_model(env, model, **kwaargs):
     steps = 0
     terminated, truncated = False, False
     video_path = f".{config['model_save_path']}/rl-video-episode-0.mp4"
-    terminated, truncated = {False}, {False}
+    terminated = {0: False}
     frac_burned = -0.1
     for ep in range(config["n_episodes"]):
         ep_reward = 0.
-        for _ in range(50):
-        # while any(terminated):
+        # for _ in range(50):
+        while not terminated[0]:
             agents = list(range(wandb.config['n_env']))
+            
             inference_dt = time.time()
-            # actions = env.action_space.sample()
-            # actions, states = model.predict(obs, deterministic=True)
-            actions = {agent: model.predict(obs[agent], deterministic=True)[0] for agent in agents}
+            if config['algorithm'] != "Random":
+                
+                # actions, states = model.predict(obs, deterministic=True)
+                actions = {agent: model.predict(obs[agent], deterministic=True)[0] for agent in agents}
+            else:
+                actions = {agent: env.action_space().sample() for agent in agents}
             inference_dt = 1.0 / (time.time() - inference_dt + 1e-6)
+            
             obs, reward, terminated, truncated, infos = env.step(actions)
             mean_reward_per_agent = sum(reward.values()) / len(reward.values())
             ep_reward += float(mean_reward_per_agent)
-            old_frac_burned = frac_burned
             frac_burned = infos[0]['burnt trees'] / (wandb.config["world_size"] ** 2)
             print(
                 f"Observation: {obs}, \n Reward: {mean_reward_per_agent}, \n burnt trees %: {frac_burned}, \n terminated: {terminated}, truncated: {truncated}"
@@ -265,8 +277,6 @@ def train(model_class, model_construct: callable, config: dict):
     print("Original observation space shape:", train_env.observation_space().shape)
     train_env = wrap_env(train_env)
     # print("Wrapped observation space shape:", train_env.observation_space().shape)
-    train_env = pettingzoo_env_to_vec_env_v1(train_env)
-    train_env = concat_vec_envs_v1(train_env, config['n_env'], num_cpus=1, base_class="stable_baselines3")
     # Create and wrap the evaluation environment
     eval_env = create_env(render_mode="rgb_array")
     eval_env = wrap_env(eval_env)
@@ -284,11 +294,7 @@ def train(model_class, model_construct: callable, config: dict):
 
 def test(model_class, **kwaargs):
     test_env = create_env(render_mode="rgb_array", config=config)
-    # test_env = pettingzoo_env_to_vec_env_v1(test_env)
-    # test_env = concat_vec_envs_v1(test_env, num_vec_envs=wandb.config['n_env'], num_cpus=1, base_class='stable_baselines3')
-    test_env = wrap_env(test_env)
     # Load the trained model from model_class constructor
-
     model = model_class.load(f'{config["model_save_path"]}/model.zip')
     wandb.log_model(path=f'./{config["model_save_path"]}',name=f'model.zip')
 
@@ -307,16 +313,15 @@ if __name__ == "__main__":
     config = {
         "algorithm": "PPO",
         "training_type":"central",
-        "run_id": "ppo_central_4",
-        "from_scratch": False,
+        "run_id": "ppo_sbx_4",
+        "from_scratch": True,
         "job_type": "test",
         "n_episodes": 100,
         "n_env": 4,
         "world_size": 17,
         "tensorboard": "./out/logs/wildfire/",
-        "model_save_path":"./out/models/wildfire/",
+        "model_save_path":"./out/models/ppo_sbx",
     }
-
     with wandb.init(
         project="Wildfire",
         name=config["run_id"],
