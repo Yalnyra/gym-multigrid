@@ -17,6 +17,7 @@ from gym_multigrid.core.constants import (
     TILE_PIXELS,
     STATE_IDX_TO_COLOR_WILDFIRE,
     COLORS,
+    AGENT_TYPES_WILDFIRE,
 )
 from gym_multigrid.utils.window import Window
 from gym_multigrid.utils.misc import (
@@ -43,12 +44,15 @@ class WildfireEnv(MultiGridEnv):
         agent_start_positions=((1, 1), (15, 15)),
         agent_colors=("red", "blue"),
         agent_groups=None,
+        agept_types=None,
         agent_view_size=10,
         initial_fire_size=1,
         max_steps=100,
         partial_obs=False,
         actions_set=WildfireActions,
         render_mode="rgb_array",
+        # Mode avialable: one_hot, typed_one_hot 
+        agent_representation_mode="one_hot",
         render_selfish_region_boundaries=False,
         cooperative_reward=False,
         log_selfish_region_metrics=False,
@@ -110,13 +114,24 @@ class WildfireEnv(MultiGridEnv):
         self.agent_start_positions = agent_start_positions
         self.agent_colors = agent_colors
         self.agent_groups = agent_groups
+        # one-hot encoding of rival non-cooperative groups of agents
+        self.num_groups = 0
         if agent_groups:
             self.idx_to_group = {}
+            self.num_groups += len(agent_groups)
             for i, group in enumerate(agent_groups):
                 for agent_index in group:
                     self.idx_to_group[agent_index] = i
+            
         # observation vector of each agent is concatenation of obs_depth number of one-hot encodings, see paper for details. len(STATE_IDX_TO_COLOR_WILDFIRE) = the number of tree states
-        self.obs_depth = num_agents + len(STATE_IDX_TO_COLOR_WILDFIRE)
+        if agent_representation_mode == 'one_hot':
+            self.obs_depth = num_agents + len(STATE_IDX_TO_COLOR_WILDFIRE)
+        # len(AGENT_TYPES_WILDFIRE) = the constant number of possible agent types, for now only using one generic 0
+        # num_groups represents the number of teams above 1, so 3 teams means num_groups = 2
+        elif agent_representation_mode == 'typed_one_hot':
+            self.obs_depth = len(AGENT_TYPES_WILDFIRE) + len(STATE_IDX_TO_COLOR_WILDFIRE) + self.num_groups
+        else:
+            raise ValueError(f"Allowed representation types are: one_hot; typed_one_hot, was given: {agent_representation_mode}")
         self.max_steps = max_steps
         self.world = WildfireWorld
         self.grid_size = size
@@ -442,11 +457,12 @@ class WildfireEnv(MultiGridEnv):
                     ] = 1
 
         # flatten, and append normalized time step at the end of, each agent observation
-        for a in self.agents:
-            agent_obs[a] = np.append(
-                agent_obs[a].flatten(),
-                np.array(self.step_count / self.max_steps, dtype=np.float32),
-            )
+        # for a in self.agents:
+            # agent_obs[a] = np.append(
+            #     agent_obs[a].flatten(),
+            #     np.array(self.step_count / self.max_steps, dtype=np.float32),
+            # )
+            # agent_obs[a] = agent_obs[a].flatten()
         return agent_obs
 
     def get_state(self):

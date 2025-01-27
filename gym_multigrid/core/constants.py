@@ -25,6 +25,9 @@ COLOR_NAMES = sorted(list(COLORS.keys()))
 # Used to map colors to integers
 COLOR_TO_IDX: "dict[str, int]" = {key: i for i, key in enumerate(COLORS.keys())}
 
+# Types 
+AGENT_TYPES_WILDFIRE = {f"{i}": i for i in range(5)}
+
 # Map of state names to integers
 STATE_TO_IDX = {
     "open": 0,

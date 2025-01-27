@@ -38,7 +38,7 @@ def save_frames_as_gif(
         patch.set_data(frames[i])
 
     anim = animation.FuncAnimation(plt.gcf(), animate, frames=len(frames), interval=50)
-    anim.save(path + filename, writer="imagemagick", fps=fps)
+    anim.save(path + filename, writer="ffmpeg", fps=fps)
     plt.close()
 
 
