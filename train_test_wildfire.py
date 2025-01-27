@@ -7,6 +7,7 @@ import pettingzoo as pz
 from pettingzoo.utils.conversions import parallel_to_aec
 import gym_multigrid
 from pz_multigrid.envs import WildfireEnv
+from gym_multigrid.utils.misc import save_frames_as_gif
 from sbx import DQN, TQC, CrossQ, TD3
 from sbx import PPO
 # from stable_baselines3 import PPO
@@ -24,27 +25,29 @@ from wandb.integration.sb3 import WandbCallback
 
 
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 def create_env(render_mode=None, **kwaargs):
     """Function to test the environment's functionality. Runs episodes with random agents in the Wildfire environment and save episode renders as GIFs."""
+    start_pos = np.random.uniform(low=1, high=16, size=(config['n_env'], 2))
     env = WildfireEnv(
         render_mode=render_mode,
         alpha=0.3,
         beta=0.8,
         # max_episode_steps=1,
-        num_agents=4,
+        num_agents=config['n_env'],
         # tuple(np.random.uniform(low=1, high=16, size=(3, 2)))
-        agent_start_positions=((4, 6), (10, 12), (8, 6), (2, 1)),
+        # agent_start_positions=((4, 6), (10, 12), (8, 6), (2, 1)),
+        agent_start_positions=np.astype(start_pos, np.int32),
         size=config["world_size"],
         initial_fire_size=3,
         cooperative_reward=True,
         render_selfish_region_boundaries=True,
         log_selfish_region_metrics=True,
-        selfish_region_xmin=[2, 2, 2, 2],
-        selfish_region_xmax=[8, 8, 8, 8],
-        selfish_region_ymin=[2, 2, 2, 2],
-        selfish_region_ymax=[8, 8, 8, 8],
+        selfish_region_xmin=[2] * config['n_env'],
+        selfish_region_xmax=[8] * config['n_env'],
+        selfish_region_ymin=[2] * config['n_env'],
+        selfish_region_ymax=[8] * config['n_env'],
     )
     return env
 
@@ -200,7 +203,7 @@ def setup_callbacks(eval_env, **kwaargs):
 
 
 def train_model(model, callbacks, **kwaargs):
-    timesteps = 3_000_000
+    timesteps = 50_000
     model.learn(
         total_timesteps=timesteps,
         tb_log_name=f"{config['run_id']}",
@@ -215,22 +218,19 @@ def load_model(env, model_path: str, definition=PPO):
     return definition.load(model_path)
 
 
-def test_model(env, model, **kwaargs):
-    (obs, _) = env.reset()
+def test_model(env, model=None, **kwaargs):
     steps = 0
-    terminated, truncated = False, False
-    video_path = f".{config['model_save_path']}/rl-video-episode-0.mp4"
-    terminated = {0: False}
+    terminated, truncated = {0: False}, {0: False}
     frac_burned = -0.1
+    frames = []
     for ep in range(config["n_episodes"]):
+        (obs, _) = env.reset()
         ep_reward = 0.
-        # for _ in range(50):
         while not terminated[0]:
             agents = list(range(wandb.config['n_env']))
             
             inference_dt = time.time()
-            if config['algorithm'] != "Random":
-                
+            if model is not None:
                 # actions, states = model.predict(obs, deterministic=True)
                 actions = {agent: model.predict(obs[agent], deterministic=True)[0] for agent in agents}
             else:
@@ -238,14 +238,16 @@ def test_model(env, model, **kwaargs):
             inference_dt = 1.0 / (time.time() - inference_dt + 1e-6)
             
             obs, reward, terminated, truncated, infos = env.step(actions)
-            mean_reward_per_agent = sum(reward.values()) / len(reward.values())
+            # Show next step on screen and add to the video frames list
+            frames.append(env.render())
+            mean_reward_per_agent = np.mean(list(reward.values()))
             ep_reward += float(mean_reward_per_agent)
             frac_burned = infos[0]['burnt trees'] / (wandb.config["world_size"] ** 2)
             print(
-                f"Observation: {obs}, \n Reward: {mean_reward_per_agent}, \n burnt trees %: {frac_burned}, \n terminated: {terminated}, truncated: {truncated}"
+                f"Observation: {obs}, \n Reward: {reward}, \n burnt trees %: {frac_burned}, \n terminated: {terminated}, truncated: {truncated}, Frames length: {len(frames)}"
                 # , Inference time in ms: {inference_dt}"
             )
-
+            
             steps += 1
             # Log reward at each step to wandb
             wandb.log(
@@ -262,12 +264,15 @@ def test_model(env, model, **kwaargs):
             #     print("--------------EPISODE-END------------\n")
             #     break
         # Total episode reward
-        # wandb.log({"video": wandb.Video(video_path, format="mp4")})
         wandb.log(
             {
                 "total_episode_reward": ep_reward,
             }
         )
+    ep = 50_000
+    save_frames_as_gif(frames=frames, path=wandb.config['tensorboard'], filename=f"{wandb.config['run_id']}-{wandb.config['job_type']}", ep=ep, fps=5)
+    wandb.log({"video": wandb.Video(f"{wandb.config['tensorboard']}/{wandb.config['run_id']}-{wandb.config['job_type']}-{ep}.gif", format="gif")})
+        
 
 
 def train(model_class, model_construct: callable, config: dict):
@@ -295,8 +300,10 @@ def train(model_class, model_construct: callable, config: dict):
 def test(model_class, **kwaargs):
     test_env = create_env(render_mode="rgb_array", config=config)
     # Load the trained model from model_class constructor
-    model = model_class.load(f'{config["model_save_path"]}/model.zip')
-    wandb.log_model(path=f'./{config["model_save_path"]}',name=f'model.zip')
+    model=None
+    if config['algorithm'] != "Random":
+        model = model_class.load(f'{config["model_save_path"]}/model.zip')
+        wandb.log_model(path=f'./{config["model_save_path"]}',name=f'model.zip')
 
     # Test the trained model
     test_model(test_env, model, config=config)
@@ -311,26 +318,38 @@ def test(model_class, **kwaargs):
 # Change the algorithm name here
 if __name__ == "__main__":
     config = {
-        "algorithm": "PPO",
+        "algorithm": "Random",
         "training_type":"central",
-        "run_id": "ppo_sbx_4",
+        "run_id": "ppo_sbx_central_10",
         "from_scratch": True,
         "job_type": "test",
-        "n_episodes": 100,
+        "n_episodes": 5,
         "n_env": 4,
         "world_size": 17,
         "tensorboard": "./out/logs/wildfire/",
-        "model_save_path":"./out/models/ppo_sbx",
+        "model_save_path":"./out/models/ppo_sbx_central_4",
     }
-    with wandb.init(
-        project="Wildfire",
-        name=config["run_id"],
-        config=config,
-        sync_tensorboard=True,
-        job_type=config["job_type"],
-        resume="allow",
-        # python -c "import wandb; print(wandb.util.generate_id())"
-        # id="8up8c0w8",
-    ):
+
+    test_env = create_env(render_mode="rgb_array", config=config)
+    # Load the trained model from model_class constructor
+    obs, _ = test_env.reset()
+    print(f"---------------First observation---------------- \n{obs[0].shape} \n")
+    # agents = list(range(config['n_env']))
+    # actions = {agent: test_env.action_space().sample() for agent in agents}        
+    # obs, reward, terminated, truncated, infos = test_env.step(actions)
+    # print(f"\n \n \n After reset \n {obs[0]}")
+    # Close the environment
+    test_env.close()
+
+    # with wandb.init(
+    #     project="Wildfire",
+    #     name=config["run_id"],
+    #     config=config,
+    #     sync_tensorboard=True,
+    #     job_type=config["job_type"],
+    #     resume="allow",
+    #     # python -c "import wandb; print(wandb.util.generate_id())"
+    #     # id="8up8c0w8",
+    # ):
         # train(PPO,model_PPO, config)
-        test(PPO, config = config)
+        # test(PPO, config = config)
