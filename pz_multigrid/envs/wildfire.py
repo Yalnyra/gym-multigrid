@@ -2,11 +2,17 @@
 """Defines the WildfireEnv class, which simulates dynamics of unmanned aerial vehicles (UAVs) fighting a spreading wildfire
 """
 import functools
-from typing import TypeVar
+from typing import TypeVar,  NamedTuple, Union, Literal
+from collections import Counter, OrderedDict, deque
+from heapq import heapify, heappop, heappush
+from gym_multigrid.policy.ctf.typing import ObservationDict
+from gym_multigrid.typing import Position
+from gym_multigrid.core.world import WorldT
 import random
 from gymnasium.spaces import Box, Dict, Discrete
 from pettingzoo.utils.conversions import parallel_to_aec_wrapper
 import numpy as np
+from numpy.typing import NDArray
 from pz_multigrid.multigrid import MultiGridEnv
 from gym_multigrid.core.world import WildfireWorld
 from gym_multigrid.core.agent import WildfireActions, Agent
@@ -28,6 +34,13 @@ from gym_multigrid.utils.misc import (
 AgentID = TypeVar("AgentID", int, str)
 
 
+def grid_bfs():
+    pass
+
+def connected_component():
+    pass
+
+
 def aec_env(env:MultiGridEnv):
     return parallel_to_aec_wrapper(env)
 
@@ -38,13 +51,13 @@ class WildfireEnv(MultiGridEnv):
         self,
         alpha=0.05,
         beta=0.99,
-        delta_beta=0,
+        delta_beta=0.,
         size=17,
         num_agents=2,
         agent_start_positions=((1, 1), (15, 15)),
         agent_colors=("red", "blue"),
         agent_groups=None,
-        agept_types=None,
+        agent_types=None,
         agent_view_size=10,
         initial_fire_size=1,
         max_steps=100,
@@ -122,14 +135,24 @@ class WildfireEnv(MultiGridEnv):
             for i, group in enumerate(agent_groups):
                 for agent_index in group:
                     self.idx_to_group[agent_index] = i
-            
+        # one-hot encoding of logically separate types of agents
+        self.possible_agent_types = (0)
+        if agent_types:
+            self.idx_to_type = {}
+            for i, a_type in enumerate(agent_types):
+                self.possible_agent_types += i
+                for agent_index in a_type:
+                    self.idx_to_type[agent_index] = i
         # observation vector of each agent is concatenation of obs_depth number of one-hot encodings, see paper for details. len(STATE_IDX_TO_COLOR_WILDFIRE) = the number of tree states
+        self.agent_representation_mode = agent_representation_mode
         if agent_representation_mode == 'one_hot':
             self.obs_depth = num_agents + len(STATE_IDX_TO_COLOR_WILDFIRE)
         # len(AGENT_TYPES_WILDFIRE) = the constant number of possible agent types, for now only using one generic 0
         # num_groups represents the number of teams above 1, so 3 teams means num_groups = 2
         elif agent_representation_mode == 'typed_one_hot':
-            self.obs_depth = len(AGENT_TYPES_WILDFIRE) + len(STATE_IDX_TO_COLOR_WILDFIRE) + self.num_groups
+        # TODO - add one-hot encoding for different teams
+            # self.obs_depth = len(AGENT_TYPES_WILDFIRE) + len(STATE_IDX_TO_COLOR_WILDFIRE) + self.num_groups
+            self.obs_depth = len(AGENT_TYPES_WILDFIRE) + len(STATE_IDX_TO_COLOR_WILDFIRE)
         else:
             raise ValueError(f"Allowed representation types are: one_hot; typed_one_hot, was given: {agent_representation_mode}")
         self.max_steps = max_steps
@@ -160,7 +183,7 @@ class WildfireEnv(MultiGridEnv):
                 - self.selfish_ymin
                 + np.ones(len(selfish_region_ymin))
             )
-
+        # TODO - Add a agent type property to an agent
         if self.cooperative_reward:
             # initialize cooperative agents
             agents = [
@@ -284,7 +307,9 @@ class WildfireEnv(MultiGridEnv):
                         # i and j are swapped because the y-coordinate specifies the row, while the x-coordinate specifies the column.
                         initial_fire.append((i, j))
                     for o in self.agents:
-                        index = o
+                        index = 0
+                        if self.agent_representation_mode == "one_hot":
+                            index = o
                         if state[len(STATE_IDX_TO_COLOR_WILDFIRE) + 1 + index, j, i]:
                             # i and j are swapped because the y-coordinate specifies the row, while the x-coordinate specifies the column.
                             agent_start_pos.append((i, j))
@@ -439,7 +464,6 @@ class WildfireEnv(MultiGridEnv):
         for a in self.agents_storage:
             for o in self.agents_storage:
                 if o.index != a.index:
-                    idx = o.index - int(np.heaviside(o.index - a.index, 0))
                     # convert to agent centered coordinates
                     nc = [
                         o.pos[0] - a.pos[0],
@@ -450,19 +474,28 @@ class WildfireEnv(MultiGridEnv):
                         nc[0] += self.grid_size_without_walls + 1
                     if nc[1] < 0:
                         nc[1] += self.grid_size_without_walls + 1
-                    agent_obs[a.index][
-                        len(STATE_IDX_TO_COLOR_WILDFIRE) + 1 + idx,
-                        nc[1],
-                        nc[0],
-                    ] = 1
+                    if self.agent_representation_mode == "one_hot":
+                        idx = o.index - int(np.heaviside(o.index - a.index, 0))
+                        agent_obs[a.index][
+                            len(STATE_IDX_TO_COLOR_WILDFIRE) + 1 + idx,
+                            nc[1],
+                            nc[0],
+                        ] = 1
+                    # Add a mapping to an agent type to an index to pad from starting "common" agent position
+                    else:
+                        agent_obs[a.index][
+                            len(STATE_IDX_TO_COLOR_WILDFIRE) + 1,
+                            nc[1],
+                            nc[0],
+                        ] = 1
 
         # flatten, and append normalized time step at the end of, each agent observation
-        # for a in self.agents:
+        for a in self.agents:
             # agent_obs[a] = np.append(
             #     agent_obs[a].flatten(),
             #     np.array(self.step_count / self.max_steps, dtype=np.float32),
             # )
-            # agent_obs[a] = agent_obs[a].flatten()
+            agent_obs[a] = agent_obs[a].flatten()
         return agent_obs
 
     def get_state(self):
@@ -492,18 +525,27 @@ class WildfireEnv(MultiGridEnv):
                 s[len(STATE_IDX_TO_COLOR_WILDFIRE), o.pos[1], o.pos[0]] = 1
 
         # update agent positions in state representation
-        for a in self.agents_storage:
-            s[
-                len(STATE_IDX_TO_COLOR_WILDFIRE) + 1 + a.index,
-                a.pos[1],
-                a.pos[0],
-            ] = 1
+        if self.agent_representation_mode == "one_hot":
+            for a in self.agents_storage:
+                s[
+                    len(STATE_IDX_TO_COLOR_WILDFIRE) + 1 + a.index,
+                    a.pos[1],
+                    a.pos[0],
+                ] = 1
+        else:
+            for a in self.agents_storage:
+                s[
+                    len(STATE_IDX_TO_COLOR_WILDFIRE) + 1,
+                    a.pos[1],
+                    a.pos[0],
+                ] = 1
 
         # flatten, and append normalized time step at the end of, state representation
-        s = np.append(
-            s.flatten(),
-            np.array(self.step_count / self.max_steps, dtype=np.float32),
-        )
+        # s = np.append(
+        #     s.flatten(),
+        #     np.array(self.step_count / self.max_steps, dtype=np.float32),
+        # )
+        s = s.flatten()
         return s
 
     def get_state_interpretation(self, state, print_interpretation=True):
@@ -541,11 +583,16 @@ class WildfireEnv(MultiGridEnv):
                     if print_interpretation:
                         print(f"Tree at position {(i,j)} is on fire.")
                     on_fire_trees.append((i, j))
-                for o in self.agents_storage:
-                    index = o.index
-                    if state[len(STATE_IDX_TO_COLOR_WILDFIRE) + 1 + index, j, i] == 1:
-                        if print_interpretation:
-                            print(f"Agent {o.index} is at position {(i,j)}.")
+                if self.agent_representation_mode == "one_hot":
+                    for o in self.agents_storage:
+                        index = o.index
+                        if state[len(STATE_IDX_TO_COLOR_WILDFIRE) + 1 + index, j, i] == 1:
+                            if print_interpretation:
+                                print(f"Agent {o.index} is at position {(i,j)}.")
+                else:
+                    if state[len(STATE_IDX_TO_COLOR_WILDFIRE) + 1, j, i] == 1:
+                            if print_interpretation:
+                                print(f"Agent of type common is at position {(i,j)}.")
         if print_interpretation:
             print(f"Time step: {time_step}")
             print("-------------------------------------------------------------")
@@ -593,18 +640,26 @@ class WildfireEnv(MultiGridEnv):
                     state[0, j, i] = 0
 
         # update agent positions in state representation
-        for i, pos in enumerate(agent_pos):
-            state[
-                len(STATE_IDX_TO_COLOR_WILDFIRE) + 1 + i,
-                pos[1],
-                pos[0],
-            ] = 1
-
+        if self.agent_representation_mode == "one_hot":
+            for i, pos in enumerate(agent_pos):
+                state[
+                    len(STATE_IDX_TO_COLOR_WILDFIRE) + 1 + i,
+                    pos[1],
+                    pos[0],
+                ] = 1
+        else:
+            for pos in agent_pos:
+                state[
+                    len(STATE_IDX_TO_COLOR_WILDFIRE) + 1,
+                    pos[1],
+                    pos[0],
+                ] = 1
         # flatten, and append normalized time step at the end of, state representation
-        state = np.append(
-            state.flatten(),
-            np.array(time_step / self.max_steps, dtype=np.float32),
-        )
+        # state = np.append(
+        #     state.flatten(),
+        #     np.array(time_step / self.max_steps, dtype=np.float32),
+        # )
+        state = state.flatten()
         return state
 
     def reset(self, seed: int | None = None, options=None):
@@ -645,7 +700,7 @@ class WildfireEnv(MultiGridEnv):
         # obs = {a: agent_obs[a] for a in self.agents}
 
         # create info dictionary
-        self.info = {"burnt trees": self.burnt_trees}
+        self.info = {"burnt trees": self.burnt_trees, "unburnt trees": self.unburnt_trees, "obs size": self.observation_space()}
                 # in AECEnv/ParallelEnv, both obs and info must contain agents set as a subset 
         self.info = {a: self.info for a in self.agents}
         return self.obs, self.info

@@ -42,8 +42,10 @@ class TensorboardCallback(BaseCallback):
         # dt_step_target += 1
         info = self.locals.get('info')
         if info is not None:
-            frac_burned = info[0]['burnt_trees'] / (wandb.config["world_size"] ** 2)
+            frac_burned = info[0]['burnt_trees'] / ((wandb.config["world_size"] - 2) ** 2)
+            frac_unburned = info[0]['unburnt_trees'] / ((wandb.config["world_size"] - 2) ** 2)
             self.logger.record('train/burnt trees', frac_burned)
+            self.logger.record('train/unburnt trees', frac_unburned)
         return True
     
     def _on_training_end(self):

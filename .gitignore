@@ -8,5 +8,6 @@ wildfire-0.gif
 *.npy
 runs/*
 ppo_random_collect_tensorboard/*
+out/*
 wandb/*
 .DS_Store
