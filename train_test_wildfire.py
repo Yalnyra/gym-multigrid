@@ -29,11 +29,14 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 def create_env(render_mode=None, **kwaargs):
     """Function to test the environment's functionality. Runs episodes with random agents in the Wildfire environment and save episode renders as GIFs."""
-    start_pos = np.random.uniform(low=1, high=16, size=(config['n_env'], 2))
+    start_pos = np.random.uniform(low=1, high=config['world_size']-1, size=(config['n_env'], 2))
     env = WildfireEnv(
         render_mode=render_mode,
-        alpha=0.3,
-        beta=0.8,
+        agent_representation_mode=config['obs_type'],
+        reward_type=config['reward_type'],
+        alpha=config["alpha_transition"],
+        beta=config["beta_transition"],
+        delta_beta=config['agent_beta_impact'],
         # max_episode_steps=1,
         num_agents=config['n_env'],
         # tuple(np.random.uniform(low=1, high=16, size=(3, 2)))
@@ -203,9 +206,8 @@ def setup_callbacks(eval_env, **kwaargs):
 
 
 def train_model(model, callbacks, **kwaargs):
-    timesteps = 50_000
     model.learn(
-        total_timesteps=timesteps,
+        total_timesteps=config['train_epochs'],
         tb_log_name=f"{config['run_id']}",
         callback=callbacks,
         progress_bar=True,
@@ -242,9 +244,10 @@ def test_model(env, model=None, **kwaargs):
             frames.append(env.render())
             mean_reward_per_agent = np.mean(list(reward.values()))
             ep_reward += float(mean_reward_per_agent)
-            frac_burned = infos[0]['burnt trees'] / (wandb.config["world_size"] ** 2)
+            frac_burned = infos[0]['burnt trees'] / ((wandb.config["world_size"] - 2) ** 2)
+            frac_unburned = infos[0]['unburnt trees'] / ((wandb.config["world_size"] - 2) ** 2)
             print(
-                f"Observation: {obs}, \n Reward: {reward}, \n burnt trees %: {frac_burned}, \n terminated: {terminated}, truncated: {truncated}, Frames length: {len(frames)}"
+                f"Reward: {reward}, \n burnt trees %: {frac_burned}, \n terminated: {terminated}, truncated: {truncated}, Frames length: {len(frames)}"
                 # , Inference time in ms: {inference_dt}"
             )
             
@@ -254,6 +257,7 @@ def test_model(env, model=None, **kwaargs):
                 {
                     "reward": mean_reward_per_agent,
                     "burnt trees": frac_burned,
+                    "unburnt trees": frac_unburned,
                     "Inference FPS": inference_dt,
                 }
             )
@@ -269,9 +273,8 @@ def test_model(env, model=None, **kwaargs):
                 "total_episode_reward": ep_reward,
             }
         )
-    ep = 50_000
-    save_frames_as_gif(frames=frames, path=wandb.config['tensorboard'], filename=f"{wandb.config['run_id']}-{wandb.config['job_type']}", ep=ep, fps=5)
-    wandb.log({"video": wandb.Video(f"{wandb.config['tensorboard']}/{wandb.config['run_id']}-{wandb.config['job_type']}-{ep}.gif", format="gif")})
+    save_frames_as_gif(frames=frames, path=wandb.config['tensorboard'], filename=f"{wandb.config['run_id']}-{wandb.config['job_type']}", ep=config['train_epochs'], fps=5)
+    wandb.log({"video": wandb.Video(f"{wandb.config['tensorboard']}/{wandb.config['run_id']}-{wandb.config['job_type']}-{config['train_epochs']}.gif", format="gif")})
         
 
 
@@ -318,38 +321,44 @@ def test(model_class, **kwaargs):
 # Change the algorithm name here
 if __name__ == "__main__":
     config = {
-        "algorithm": "Random",
+        "algorithm": "PPO",
         "training_type":"central",
-        "run_id": "ppo_sbx_central_10",
+        "run_id": "ppo_islands_10_13",
         "from_scratch": True,
-        "job_type": "test",
+        "job_type": "train",
+        "train_epochs": 300_000,
         "n_episodes": 5,
-        "n_env": 4,
-        "world_size": 17,
+        "n_env": 10,
+        "world_size": 13,
+        "alpha_transition": 0.3,
+        "beta_transition": 0.8,
+        "agent_beta_impact": 0.8,
+        "obs_type": "typed_one_hot",
+        "reward_type": 'islands_size',
         "tensorboard": "./out/logs/wildfire/",
-        "model_save_path":"./out/models/ppo_sbx_central_4",
+        "model_save_path":"./out/models/ppo_islands_10_13",
     }
 
     test_env = create_env(render_mode="rgb_array", config=config)
     # Load the trained model from model_class constructor
     obs, _ = test_env.reset()
     print(f"---------------First observation---------------- \n{obs[0].shape} \n")
-    # agents = list(range(config['n_env']))
-    # actions = {agent: test_env.action_space().sample() for agent in agents}        
-    # obs, reward, terminated, truncated, infos = test_env.step(actions)
-    # print(f"\n \n \n After reset \n {obs[0]}")
-    # Close the environment
+    agents = list(range(config['n_env']))
+    actions = {agent: test_env.action_space().sample() for agent in agents}        
+    obs, reward, terminated, truncated, infos = test_env.step(actions)
+    print(f"\n \n \n After reset \n {obs[0]}")
+    Close the environment
     test_env.close()
 
-    # with wandb.init(
-    #     project="Wildfire",
-    #     name=config["run_id"],
-    #     config=config,
-    #     sync_tensorboard=True,
-    #     job_type=config["job_type"],
-    #     resume="allow",
-    #     # python -c "import wandb; print(wandb.util.generate_id())"
-    #     # id="8up8c0w8",
-    # ):
-        # train(PPO,model_PPO, config)
-        # test(PPO, config = config)
+    with wandb.init(
+        project="Wildfire",
+        name=config["run_id"],
+        config=config,
+        sync_tensorboard=True,
+        job_type=config["job_type"],
+        resume="allow",
+        # python -c "import wandb; print(wandb.util.generate_id())"
+        # id="8up8c0w8",
+    ):
+        train(PPO,model_PPO, config)
+        test(PPO, config = config)

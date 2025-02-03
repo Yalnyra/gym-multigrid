@@ -2,12 +2,12 @@
 """Defines the WildfireEnv class, which simulates dynamics of unmanned aerial vehicles (UAVs) fighting a spreading wildfire
 """
 import functools
-from typing import TypeVar,  NamedTuple, Union, Literal
-from collections import Counter, OrderedDict, deque
-from heapq import heapify, heappop, heappush
-from gym_multigrid.policy.ctf.typing import ObservationDict
+from typing import TypeVar, Callable, NamedTuple, Literal
+from collections import Counter, deque
+# from heapq import heapify, heappop, heappush
 from gym_multigrid.typing import Position
 from gym_multigrid.core.world import WorldT
+from gym_multigrid.core.object import WorldObj, WorldObjT
 import random
 from gymnasium.spaces import Box, Dict, Discrete
 from pettingzoo.utils.conversions import parallel_to_aec_wrapper
@@ -34,11 +34,6 @@ from gym_multigrid.utils.misc import (
 AgentID = TypeVar("AgentID", int, str)
 
 
-def grid_bfs():
-    pass
-
-def connected_component():
-    pass
 
 
 def aec_env(env:MultiGridEnv):
@@ -66,6 +61,7 @@ class WildfireEnv(MultiGridEnv):
         render_mode="rgb_array",
         # Mode avialable: one_hot, typed_one_hot 
         agent_representation_mode="one_hot",
+        reward_type: Literal["trees_to_fire", "islands_size"] = "trees_to_fire",
         render_selfish_region_boundaries=False,
         cooperative_reward=False,
         log_selfish_region_metrics=False,
@@ -145,16 +141,18 @@ class WildfireEnv(MultiGridEnv):
                     self.idx_to_type[agent_index] = i
         # observation vector of each agent is concatenation of obs_depth number of one-hot encodings, see paper for details. len(STATE_IDX_TO_COLOR_WILDFIRE) = the number of tree states
         self.agent_representation_mode = agent_representation_mode
-        if agent_representation_mode == 'one_hot':
-            self.obs_depth = num_agents + len(STATE_IDX_TO_COLOR_WILDFIRE)
+        match agent_representation_mode:
+            case "one_hot":
+                self.obs_depth = num_agents + len(STATE_IDX_TO_COLOR_WILDFIRE)
         # len(AGENT_TYPES_WILDFIRE) = the constant number of possible agent types, for now only using one generic 0
         # num_groups represents the number of teams above 1, so 3 teams means num_groups = 2
-        elif agent_representation_mode == 'typed_one_hot':
+            case "typed_one_hot":
         # TODO - add one-hot encoding for different teams
-            # self.obs_depth = len(AGENT_TYPES_WILDFIRE) + len(STATE_IDX_TO_COLOR_WILDFIRE) + self.num_groups
-            self.obs_depth = len(AGENT_TYPES_WILDFIRE) + len(STATE_IDX_TO_COLOR_WILDFIRE)
-        else:
-            raise ValueError(f"Allowed representation types are: one_hot; typed_one_hot, was given: {agent_representation_mode}")
+                # self.obs_depth = len(AGENT_TYPES_WILDFIRE) + len(STATE_IDX_TO_COLOR_WILDFIRE) + self.num_groups
+                self.obs_depth = len(AGENT_TYPES_WILDFIRE) + len(STATE_IDX_TO_COLOR_WILDFIRE)
+            case _:
+                raise ValueError(f"Allowed representation types are: one_hot; typed_one_hot, was given: {agent_representation_mode}")
+        self.reward_type = reward_type
         self.max_steps = max_steps
         self.world = WildfireWorld
         self.grid_size = size
@@ -162,7 +160,7 @@ class WildfireEnv(MultiGridEnv):
         self.initial_fire_size = initial_fire_size
         self.burnt_trees = 0
         self.unburnt_trees = []
-        self.trees_on_fire = 0
+        self.trees_on_fire = []
         self.cooperative_reward = cooperative_reward
         self.render_selfish_region_boundaries = render_selfish_region_boundaries
         self.log_selfish_region_metrics = log_selfish_region_metrics
@@ -380,10 +378,9 @@ class WildfireEnv(MultiGridEnv):
                 int(pos[1]),
             )
 
-        # update counts of trees on fire and healthy trees
-        self.trees_on_fire += self.initial_fire_size**2
-        num_healthy_trees = self.grid_size_without_walls**2 - len(initial_fire)
 
+        # update counts of healthy trees
+        num_healthy_trees = self.grid_size_without_walls**2 - len(initial_fire)
         # insert healthy tree in grid
         for _ in range(num_healthy_trees):
             tree_obj = Tree(self.world, STATE_TO_IDX_WILDFIRE["healthy"])
@@ -412,7 +409,9 @@ class WildfireEnv(MultiGridEnv):
         for c in self.helper_grid.grid:
             if c is not None and c.type == "tree":
                 self.unburnt_trees.append(c)
-
+        # Add all starting burning trees 
+        for pos in initial_fire:
+            self.trees_on_fire.append(self.helper_grid.get(*pos))
         # insert agents in grid
         for i, a in enumerate(self.agents_storage):
             self.place_agent(a, pos=agent_start_pos[i])
@@ -491,11 +490,11 @@ class WildfireEnv(MultiGridEnv):
 
         # flatten, and append normalized time step at the end of, each agent observation
         for a in self.agents:
-            # agent_obs[a] = np.append(
-            #     agent_obs[a].flatten(),
-            #     np.array(self.step_count / self.max_steps, dtype=np.float32),
-            # )
-            agent_obs[a] = agent_obs[a].flatten()
+            agent_obs[a] = np.append(
+                agent_obs[a].flatten(),
+                np.array(self.step_count / self.max_steps, dtype=np.float32),
+            )
+            # agent_obs[a] = agent_obs[a].flatten()
         return agent_obs
 
     def get_state(self):
@@ -541,11 +540,11 @@ class WildfireEnv(MultiGridEnv):
                 ] = 1
 
         # flatten, and append normalized time step at the end of, state representation
-        # s = np.append(
-        #     s.flatten(),
-        #     np.array(self.step_count / self.max_steps, dtype=np.float32),
-        # )
-        s = s.flatten()
+        s = np.append(
+            s.flatten(),
+            np.array(self.step_count / self.max_steps, dtype=np.float32),
+        )
+        # s = s.flatten()
         return s
 
     def get_state_interpretation(self, state, print_interpretation=True):
@@ -655,11 +654,11 @@ class WildfireEnv(MultiGridEnv):
                     pos[0],
                 ] = 1
         # flatten, and append normalized time step at the end of, state representation
-        # state = np.append(
-        #     state.flatten(),
-        #     np.array(time_step / self.max_steps, dtype=np.float32),
-        # )
-        state = state.flatten()
+        state = np.append(
+            state.flatten(),
+            np.array(time_step / self.max_steps, dtype=np.float32),
+        )
+        # state = state.flatten()
         return state
 
     def reset(self, seed: int | None = None, options=None):
@@ -683,7 +682,7 @@ class WildfireEnv(MultiGridEnv):
         """
         # reset environment attributes
         self.burnt_trees = 0
-        self.trees_on_fire = 0
+        self.trees_on_fire = []
         self.unburnt_trees = []
         if self.log_selfish_region_metrics:
             self.selfish_region_trees_on_fire = np.zeros(len(self.selfish_xmin))
@@ -698,9 +697,13 @@ class WildfireEnv(MultiGridEnv):
         # get agent observations
         self.obs = self._get_obs()
         # obs = {a: agent_obs[a] for a in self.agents}
-
+        match self.reward_type, self.cooperative_reward:
+            case "islands_size", True:
+                self.fire_board = self.connected_component()
+            case "fire_islands_size", True:
+                self.fire_board = self.connected_component(avoided_conditions= [lambda obj: obj.type == "tree" and obj.state==2])
         # create info dictionary
-        self.info = {"burnt trees": self.burnt_trees, "unburnt trees": self.unburnt_trees, "obs size": self.observation_space()}
+        self.info = {"burnt trees": self.burnt_trees, "unburnt trees": len(self.unburnt_trees), "obs size": self.observation_space()}
                 # in AECEnv/ParallelEnv, both obs and info must contain agents set as a subset 
         self.info = {a: self.info for a in self.agents}
         return self.obs, self.info
@@ -782,6 +785,155 @@ class WildfireEnv(MultiGridEnv):
             and j >= self.selfish_ymin[region_index]
             and j <= self.selfish_ymax[region_index]
         )
+    
+    def grid_bfs(
+        self,
+        queue: deque[tuple], 
+        board: NDArray, 
+        color: int = 0,
+        avoided_objects:list[str] = ["wall"],
+        avoided_conditions: list[Callable[[WorldObj], bool]] = [lambda x: False],
+        ):
+        """
+        TODO: fix
+        WARNING: unexpected behavior from initialising deque with more than one instance
+        Possible race condition of splitting a connected graph with different colors
+         from different fire starts being present in the same queue at once
+        queue: deque
+            starting deque of (Initialised objects, x) to start exploring from
+        board: NDArray 
+            3-tuple (m, n, 2) numpy array
+            m and n are coordinates of objects
+            last index corresponds for (x, y) connectivity island information list
+            \n x is the closest distance to the fire in that region (unexplored is '-1')
+            \n y is The region id (unexplored is '-1')
+
+            NOT INCLUDED
+            \n z is the amount of fires adjacent to that region (unexplored is '0')
+        avoided_objects: list[WorldObj] 
+            tile types that block exploration
+        avoided_conditions: list[Callable[[WorldObj], bool]]
+            Extra functions that filter objects based not just on their type
+
+        \n Returns: bool
+            Whether has revisited the same cluster in grid
+        """
+        revisiting = False
+        while len(queue) > 0:
+            obj:WorldObj
+            obj, s = queue.popleft()
+            board[obj.pos[0]][obj.pos[1]][0] = s
+            board[obj.pos[0]][obj.pos[1]][1] = color
+
+            for dx, dy in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
+                next_obj:WorldObj
+                next_obj = self.helper_grid.get(obj.pos[0] + dx, obj.pos[1] + dy)
+                if next_obj is None:
+                    continue
+
+                if next_obj.pos[0] < 0 or next_obj.pos[0] >= self.helper_grid.width:
+                    continue
+
+                if next_obj.pos[1] < 0 or next_obj.pos[1] >= self.helper_grid.height:
+                    continue
+                
+                # Hit an avoidance condition, skip
+                if next_obj.type in avoided_objects:
+                    continue
+
+                # If an object passes on any condition of a more function that filters objects based not just their type, skip
+                if any(condition(next_obj) for condition in avoided_conditions):
+                    continue        
+                
+                # Already present
+                if board[next_obj.pos[0]][next_obj.pos[1]][0] > -1:
+                    revisiting = True
+                    if board[next_obj.pos[0]][next_obj.pos[1]][0] <= s + 1:
+                        continue
+                    
+                # person arrives at the same time to the end of the board, special case
+                # if not is_fire and nr == m - 1 and nc == n - 1 and fire_board[nr][nc] == s + 1:
+                #     queue.append((nr, nc, s+1))
+                #     continue
+
+                # # person arrives to a place fire has been there first or at the same time, can't proceed
+                # if not is_fire and fire_board[nr][nc] > -1 and fire_board[nr][nc] <= s + 1:
+                #     continue
+
+                queue.append((next_obj, s+1))
+
+        return revisiting
+
+    def connected_component(self,
+        avoided_objects:list[str] = ["wall"],
+        avoided_conditions: list[Callable[[WorldObj], bool]] = [lambda obj: obj.type == "tree" and obj.state!=0]
+        ):
+        board = np.full(shape=(self.grid_size,self.grid_size,2), fill_value=-1)
+        color = 0
+        for fire in self.trees_on_fire:
+            if self.grid_bfs(
+                # deque([(fire, 0) for tree in self.trees_on_fire]), 
+                deque([(fire, 0)]),
+                board, 
+                color=color,
+                avoided_objects=avoided_objects,
+                avoided_conditions=avoided_conditions):
+                # Start coloring to the next island cluster if this one was already explored
+                color += 1
+        # print(f"Total clusters grid: {board}")
+        return board
+    
+    def fire_spread_sizes(self, graph_bag, min_area) -> list[int]:
+        """
+        Find sizes of all unburnt trees components adjacent to burning fire
+        graph_bag: Indexed list of all unburnt tree tiles, each containing a bag of healthy connections fire could spread through \n
+        Shall be initialised through BFS of all healthy tiles
+        min_area: Min component size to be included in the returned list
+
+        returns: Sorted list of sizes of all components where there is minimal fire present
+        """
+
+        ### Create combined array w/o burned trees, and count distance from burning trees once using BFS
+
+
+
+        n = len(graph_bag)
+        parents = range(n)
+        def find(x):
+            if x != parents[x]:
+                parents[x] = find(parents[x])
+        def union(x, y):
+            parents[find(x)] = find(y)
+        
+        for i in range(n):
+            for j in range(i + 1, n):
+                # If connection in connectivity matrix; change to a bagged component
+                if graph[i][j] == 1:
+                    union(i, j)
+        # Find areas of touching fires
+        area = Counter(find(i) for i in range(n))
+        fire_spread = Counter(find(i) for i in self.trees_on_fire)
+        unburnt_sizes = []
+        # unburnt_size is the size of the area
+        # res is the initial fire index in the graph
+        unburnt_size, res = 0, min(self.trees_on_fire)
+        for i in self.trees_on_fire:
+            if fire_spread[find(i)] >= 1:
+                # Find the original 
+                parent = find(i)
+                if area[parent] > unburnt_size:
+                    if area[parent] >= min_area:
+                        unburnt_sizes.append(unburnt_size)
+                    unburnt_size, res = area[parent], i
+                elif area[parent] == unburnt_size:
+                    res = min(res, i)
+        unburnt_sizes.sort(reverse=True)
+        return unburnt_sizes
+    
+
+
+    def _reward(self, current_agent, rewards, reward=1):
+        raise NotImplementedError("Reward is computed in step")
 
     def step(self, actions):
         """Take a step in the environment. Wildfire dynamics are propagated by one time step, and agents move according to their actions.
@@ -805,32 +957,29 @@ class WildfireEnv(MultiGridEnv):
         self.step_count += 1
         terminated = np.zeros(len(self.agents))
         truncated = np.zeros(len(self.agents))
-        # print(f"Selected actions: {actions}")
         # Move agents sequentially, in random order
         order = np.random.permutation(len(self.agents))
+        blocking_agent_index = []
         for i in order:
-            if actions[i] == self.actions.STILL:
-                continue
-            if actions[i] == self.actions.NORTH:
-                next_pos = self.agents_storage[i].north_pos()
-                next_cell = self.grid.get(*next_pos)
-                if next_cell is None or next_cell.can_overlap():
-                    self.move_agent(i, next_pos)
-            elif actions[i] == self.actions.SOUTH:
-                next_pos = self.agents_storage[i].south_pos()
-                next_cell = self.grid.get(*next_pos)
-                if next_cell is None or next_cell.can_overlap():
-                    self.move_agent(i, next_pos)
-            elif actions[i] == self.actions.EAST:
-                next_pos = self.agents_storage[i].east_pos()
-                next_cell = self.grid.get(*next_pos)
-                if next_cell is None or next_cell.can_overlap():
-                    self.move_agent(i, next_pos)
-            elif actions[i] == self.actions.WEST:
-                next_pos = self.agents_storage[i].west_pos()
-                next_cell = self.grid.get(*next_pos)
-                if next_cell is None or next_cell.can_overlap():
-                    self.move_agent(i, next_pos)
+            next_pos = self.agents_storage[i].pos
+            match actions[i]:
+                case self.actions.STILL:
+                        continue
+                case self.actions.NORTH:
+                    next_pos = self.agents_storage[i].north_pos()
+                case self.actions.SOUTH:
+                    next_pos = self.agents_storage[i].south_pos()
+                case self.actions.EAST:
+                    next_pos = self.agents_storage[i].east_pos()
+                case self.actions.WEST:
+                    next_pos = self.agents_storage[i].west_pos()
+            next_cell = self.grid.get(*next_pos)
+            if next_cell is None and next_cell.can_overlap():
+                self.move_agent(i, next_cell)
+            elif next_cell.type == 'agent':
+                blocking_agent_index.append(self.agents_storage.index(next_cell))
+            elif next_cell.type == 'wall':
+                blocking_agent_index.append(i)
 
         # propagate wildfire dynamics by one time step
         # initialize lists to store trees transitioning to on fire and burnt state in the current time step
@@ -850,7 +999,7 @@ class WildfireEnv(MultiGridEnv):
                 ):
                     # update relevant attributes and lists
                     trees_to_fire_state.append(c)
-                    self.trees_on_fire += 1
+                    self.trees_on_fire.append(c)
                     if self.log_selfish_region_metrics:
                         if c.region != "common":
                             self.selfish_region_trees_on_fire[int(c.region)] += 1
@@ -861,7 +1010,7 @@ class WildfireEnv(MultiGridEnv):
                     # update relevant attributes and list
                     trees_to_burnt_state.append(c)
                     self.burnt_trees += 1
-                    self.trees_on_fire -= 1
+                    self.trees_on_fire.remove(c)
                     if self.log_selfish_region_metrics:
                         if c.region != "common":
                             self.selfish_region_burnt_trees[int(c.region)] += 1
@@ -886,9 +1035,8 @@ class WildfireEnv(MultiGridEnv):
             if o.type == "tree":
                 o.state = 2
                 o.color = STATE_IDX_TO_COLOR_WILDFIRE[o.state]
-
         # check if episode is done
-        if self.trees_on_fire == 0:
+        if len(self.trees_on_fire) == 0:
             terminated = np.ones(len(self.agents))
             rewards = {f"{a}": 0 for a in self.agents}
             # self.agents = []
@@ -900,29 +1048,88 @@ class WildfireEnv(MultiGridEnv):
             # self.agents_storage = []
         else:
             # compute agent rewards
+            
             agent_rewards = np.zeros(self.num_agents)
-            if self.cooperative_reward:
-                agent_rewards -= 0.5 * len(trees_to_fire_state)
-            else:
-                if self.agent_groups:
-                    for a in self.agents:
-                        agent_rewards[a] -= 0.5 * num_trees_to_fire_state_sr[
-                            f"{self.idx_to_group[a]}"
-                        ] + 0.1 * (
-                            len(trees_to_fire_state)
-                            - num_trees_to_fire_state_sr[
+            # Add reward for each unburnt tree
+            # alpha reward coeff = 1
+            agent_rewards += len(self.unburnt_trees) / self.grid_size_without_walls ** 2
+            for tree in trees_to_burnt_state:
+                if tree.agent_above:
+            # Add reward to agent index which extinguished the fire
+            # beta reward coeff = 3
+                    a = self.grid.get(*tree.pos)
+                    agent_rewards[a.index] += 3
+            # Reward accounts for each action blocking other agents (including itself)
+            # Moving/Congesting agent coeff = 0.5
+            for a in blocking_agent_index:
+                agent_rewards[a] -= 0.5
+            match self.reward_type, self.cooperative_reward:
+                case _, False:
+                    if self.agent_groups:
+                        for a in self.agents:
+                            agent_rewards[a] -= 0.5 * num_trees_to_fire_state_sr[
                                 f"{self.idx_to_group[a]}"
-                            ]
-                        )
-                else:
+                            ] + 0.1 * (
+                                len(trees_to_fire_state)
+                                - num_trees_to_fire_state_sr[
+                                    f"{self.idx_to_group[a]}"
+                                ]
+                            )
+                    else:
+                        for a in self.agents:
+                            agent_rewards[a] -= 0.5 * num_trees_to_fire_state_sr[
+                                f"{a}"
+                            ] + 0.1 * (
+                                len(trees_to_fire_state)
+                                - num_trees_to_fire_state_sr[f"{a}"]
+                            )
+                case "agent_above", True:
+                # Delta reward coeff = 0.5
+                    agent_rewards -= 0.5 * len(trees_to_fire_state)
                     for a in self.agents:
-                        agent_rewards[a] -= 0.5 * num_trees_to_fire_state_sr[
-                            f"{a}"
-                        ] + 0.1 * (
-                            len(trees_to_fire_state)
-                            - num_trees_to_fire_state_sr[f"{a}"]
-                        )
-            # agent rewards dictionary
+                        tree = self.helper_grid.get(*self.agents_storage[a].pos)
+                # Beta+ reward coeff = 1
+                        agent_rewards[a] += 1 if tree.type == "tree" and tree.state == 1 else -1
+                case "islands_size", True:
+                    next_fire_board = self.connected_component()
+                    clusters, counts = np.unique(self.fire_board[:][:][2], return_counts=True)
+                    # Remove the -1 unexplored cluster
+                    if clusters[0] == -1:
+                        clusters, counts = clusters[1:], counts[1:]
+                    # print(f"Current clusters at step: {self.step_count}: \n {len(clusters), len(counts)}")
+                    assert len(clusters) == len(counts)
+                    next_clusters, next_counts = np.unique(next_fire_board[:][:][2], return_counts=True)
+                    if next_clusters[0] == -1:
+                        next_clusters, next_counts = next_clusters[1:], next_counts[1:]
+                    # print(f"Next clusters at step: {self.step_count}: \n {len(next_clusters), len(next_counts)}")
+                    assert len(next_clusters) == len(next_counts)
+                    # Discard small clusters
+                    clusters = clusters[counts > 2]
+                    next_clusters = next_clusters[next_counts > 2]
+                    # Find the difference in clusters
+                    if len(next_clusters) < len(clusters):
+                        agent_rewards += np.sum(counts) - np.sum(next_counts) / self.grid_size_without_walls ** 2
+                    self.fire_board = next_fire_board
+                case "fire_islands_size", True:
+                    next_fire_board = self.connected_component(avoided_conditions= [lambda obj: obj.type == "tree" and obj.state==2])
+                    clusters, counts = np.unique(self.fire_board[:][:][2], return_counts=True)
+                    # Remove the -1 unexplored cluster
+                    if clusters[0] == -1:
+                        clusters, counts = clusters[1:], counts[1:]
+                    next_clusters, next_counts = np.unique(next_fire_board[:][:][2], return_counts=True)
+                    if next_clusters[0] == -1:
+                        next_clusters, next_counts = next_clusters[1:], next_counts[1:]
+                    # Discard small clusters
+                    clusters = clusters[counts > 2]
+                    next_clusters = next_clusters[next_counts > 2]
+                    # Find the difference in clusters
+                    if len(next_clusters) < len(clusters):
+                        agent_rewards += np.sum(counts) - np.sum(next_counts) / self.grid_size_without_walls ** 2
+                    self.fire_board = next_fire_board
+                case _, True:  
+                    agent_rewards -= 0.5 * len(trees_to_fire_state)
+                    
+        # agent rewards dictionary
             rewards = {a: agent_rewards[a] for a in self.agents}
 
         # get agent observations after the environment step
@@ -930,7 +1137,8 @@ class WildfireEnv(MultiGridEnv):
         # next_obs = {a: agent_obs[a] for a in self.agents}
 
         # info dictionary
-        self.info = {"burnt trees": self.burnt_trees}
+        self.info = {"burnt trees": self.burnt_trees, "unburnt trees": len(self.unburnt_trees), }
+        # self.info = {a: self.info.update({"blocked actions": blocking_agent_index.count(a)}) for a in self.agents}
         self.info = {a: self.info for a in self.agents}
         terminated = {idx: True if val==1. else False for idx, val in enumerate(terminated)}
         truncated = {idx: True if val==1. else False for idx, val in enumerate(truncated)}
