@@ -4,21 +4,20 @@ import sys
 import numpy as np
 import gymnasium as gym
 import pettingzoo as pz
-from pettingzoo.utils.conversions import parallel_to_aec
+# from pettingzoo.utils.conversions import parallel_to_aec
 import gym_multigrid
 from pz_multigrid.envs import WildfireEnv
 from gym_multigrid.utils.misc import save_frames_as_gif
 from sbx import DQN, TQC, CrossQ, TD3
 from sbx import PPO
 # from stable_baselines3 import PPO
-from sb3_contrib import RecurrentPPO, ARS
+# from sb3_contrib import RecurrentPPO, ARS
 from stable_baselines3.common.callbacks import (
     CheckpointCallback,
     EvalCallback,
     StopTrainingOnNoModelImprovement,
 )
 from tests.tensorboard.log_callback import TensorboardCallback
-from gymnasium.wrappers import RecordVideo
 from supersuit import pettingzoo_env_to_vec_env_v1, concat_vec_envs_v1
 import wandb
 from wandb.integration.sb3 import WandbCallback
@@ -57,13 +56,6 @@ def create_env(render_mode=None, **kwaargs):
 
 # Could replace DummyVecEnv w/ SubProcEnv if using SAC model
 def wrap_env(env, **kwaargs):
-    # if env.render_mode == "rgb_array":
-    #     env = RecordVideo(
-    #         env,
-    #         video_folder=config["run_id"],
-    #         video_length=30000,
-    #         episode_trigger=lambda x: x % 100 == 0,
-    #     )
     # Add zero observation for agents upon death, useful with dynamic agents
     # env = black_death_v3(env)
     env = pettingzoo_env_to_vec_env_v1(env)
@@ -85,29 +77,11 @@ def model_PPO(env, **PPO_kwaargs):
         gamma=0.99,
         policy_kwargs=policy_kwargs,
         gae_lambda=0.95,
-        clip_range=0.2,
-        # ent_coef="auto_0.05",
+        clip_range=0.1,
+        ent_coef=0.1,
         tensorboard_log=config["tensorboard"]
     )
 
-
-def model_ARS(env, **ARS_kwaargs):
-    nn_t = [128, 128]
-    policy_kwargs = dict(net_arch=nn_t)
-    return ARS(
-        "MlpPolicy",
-        env,
-        n_delta=20,
-        n_top=5,
-        learning_rate=3e-4,
-        delta_std=0.05,
-        zero_policy=True,
-        alive_bonus_offset=0,
-        n_eval_episodes=1000,
-        policy_kwargs=policy_kwargs,
-        stats_window_size=100,
-        tensorboard_log=f"{config['tensorboard']}",
-    )
 
 
 def model_CrossQ(env, **CrossQ_kwaargs):
@@ -152,32 +126,48 @@ def model_DQN(env, **DQN_kwaargs):
         tensorboard_log=config["tensorboard"],
     )
 
-
-def model_RPPO(env, **RPPO_kwaargs):
-    nn_t = (128, 128)
-    policy_kwargs = dict(net_arch=dict(pi=nn_t, vf=nn_t))
-    return RecurrentPPO(
-        "MlpLstmPolicy",
-        env,
-        verbose=0,
-        learning_rate=1e-4,
-        n_steps=2048,
-        batch_size=128,
-        n_epochs=10,
-        gamma=0.99,
-        policy_kwargs=policy_kwargs,
-        gae_lambda=0.95,
-        clip_range=0.2,
-        ent_coef=0.05,
-        tensorboard_log=config["tensorboard"],
-    )
-
 def model_TD3(env, **kwaargs):
     return TD3(
         "MlpPolicy",
         env=env,
         tensorboard_log=config["tensorboard"])
 
+# def model_RPPO(env, **RPPO_kwaargs):
+#     nn_t = (128, 128)
+#     policy_kwargs = dict(net_arch=dict(pi=nn_t, vf=nn_t))
+#     return RecurrentPPO(
+#         "MlpLstmPolicy",
+#         env,
+#         verbose=0,
+#         learning_rate=1e-4,
+#         n_steps=2048,
+#         batch_size=128,
+#         n_epochs=10,
+#         gamma=0.99,
+#         policy_kwargs=policy_kwargs,
+#         gae_lambda=0.95,
+#         clip_range=0.2,
+#         ent_coef=0.05,
+#         tensorboard_log=config["tensorboard"],
+#     )
+
+# def model_ARS(env, **ARS_kwaargs):
+#     nn_t = [128, 128]
+#     policy_kwargs = dict(net_arch=nn_t)
+#     return ARS(
+#         "MlpPolicy",
+#         env,
+#         n_delta=20,
+#         n_top=5,
+#         learning_rate=3e-4,
+#         delta_std=0.05,
+#         zero_policy=True,
+#         alive_bonus_offset=0,
+#         n_eval_episodes=1000,
+#         policy_kwargs=policy_kwargs,
+#         stats_window_size=100,
+#         tensorboard_log=f"{config['tensorboard']}",
+#     )
 
 def setup_callbacks(eval_env, **kwaargs):
     checkpoint_callback = CheckpointCallback(
@@ -323,7 +313,7 @@ if __name__ == "__main__":
     config = {
         "algorithm": "PPO",
         "training_type":"central",
-        "run_id": "ppo_islands_10_13",
+        "run_id": "ppo_fire_adjacent_10_13",
         "from_scratch": True,
         "job_type": "train",
         "train_epochs": 300_000,
@@ -334,20 +324,21 @@ if __name__ == "__main__":
         "beta_transition": 0.8,
         "agent_beta_impact": 0.8,
         "obs_type": "typed_one_hot",
-        "reward_type": 'islands_size',
+        "reward_type": 'fire_adjacent',
         "tensorboard": "./out/logs/wildfire/",
-        "model_save_path":"./out/models/ppo_islands_10_13",
+        "model_save_path":"./out/models/ppo_fire_adjacent_10_13",
     }
 
     test_env = create_env(render_mode="rgb_array", config=config)
-    # Load the trained model from model_class constructor
     obs, _ = test_env.reset()
     print(f"---------------First observation---------------- \n{obs[0].shape} \n")
     agents = list(range(config['n_env']))
     actions = {agent: test_env.action_space().sample() for agent in agents}        
     obs, reward, terminated, truncated, infos = test_env.step(actions)
-    print(f"\n \n \n After reset \n {obs[0]}")
-    Close the environment
+    while not terminated[0]:
+        print(f"\n \n \n After reset \n {obs[0]}")
+        obs, reward, terminated, truncated, infos = test_env.step(actions)
+# Close the environment
     test_env.close()
 
     with wandb.init(

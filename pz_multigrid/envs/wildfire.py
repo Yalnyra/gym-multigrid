@@ -2,6 +2,7 @@
 """Defines the WildfireEnv class, which simulates dynamics of unmanned aerial vehicles (UAVs) fighting a spreading wildfire
 """
 import functools
+from itertools import combinations
 from typing import TypeVar, Callable, NamedTuple, Literal
 from collections import Counter, deque
 # from heapq import heapify, heappop, heappush
@@ -14,6 +15,7 @@ from pettingzoo.utils.conversions import parallel_to_aec_wrapper
 import numpy as np
 from numpy.typing import NDArray
 from pz_multigrid.multigrid import MultiGridEnv
+from pz_multigrid.utils.utils import manhattan_distance
 from gym_multigrid.core.world import WildfireWorld
 from gym_multigrid.core.agent import WildfireActions, Agent
 from gym_multigrid.core.object import Tree
@@ -702,6 +704,9 @@ class WildfireEnv(MultiGridEnv):
                 self.fire_board = self.connected_component()
             case "fire_islands_size", True:
                 self.fire_board = self.connected_component(avoided_conditions= [lambda obj: obj.type == "tree" and obj.state==2])
+            case "fire_entropy", True:
+                self.fire_board = self.connected_component()[:][:][0]
+                self.fire_board = self.fire_board[self.fire_board > -1]
         # create info dictionary
         self.info = {"burnt trees": self.burnt_trees, "unburnt trees": len(self.unburnt_trees), "obs size": self.observation_space()}
                 # in AECEnv/ParallelEnv, both obs and info must contain agents set as a subset 
@@ -731,7 +736,7 @@ class WildfireEnv(MultiGridEnv):
         next_tree.agent_above = True
         self.agents_storage[i].pos = next_pos
 
-    def neighbors_on_fire(self, tree_pos) -> int:
+    def neighbors_on_fire(self, tree_pos, state="on fire") -> int:
         """Get the number of neighboring trees on fire for a given tree.
            Neighbors are adjacent trees in the cardinal directions. A tree can have at most 4 neighbors
 
@@ -745,20 +750,16 @@ class WildfireEnv(MultiGridEnv):
         num : int
             the number of neighboring trees on fire
         """
+        idx = STATE_TO_IDX_WILDFIRE[state]
+        assert idx is not None, f"Invalid state: {state}" 
         num = 0
-        relative_pos = [
-            np.array([1, 0]),
-            np.array([-1, 0]),
-            np.array([0, 1]),
-            np.array([0, -1]),
-        ]
-        for r in relative_pos:
+        for r in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
             neighbor_pos = tree_pos + r
             if neighbor_pos[0] >= 0 and neighbor_pos[0] < self.helper_grid.width:
                 if neighbor_pos[1] >= 0 and neighbor_pos[1] < self.helper_grid.height:
                     o = self.helper_grid.get(*neighbor_pos)
                     if o is not None and o.type == "tree":
-                        if o.state == 1:
+                        if o.state == idx:
                             num += 1
         return num
 
@@ -976,8 +977,8 @@ class WildfireEnv(MultiGridEnv):
             next_cell = self.grid.get(*next_pos)
             if next_cell is None and next_cell.can_overlap():
                 self.move_agent(i, next_cell)
-            elif next_cell.type == 'agent':
-                blocking_agent_index.append(self.agents_storage.index(next_cell))
+            # elif next_cell.type == 'agent':
+                # blocking_agent_index.append(self.agents_storage.index(next_cell))
             elif next_cell.type == 'wall':
                 blocking_agent_index.append(i)
 
@@ -1043,7 +1044,8 @@ class WildfireEnv(MultiGridEnv):
             # self.agents_storage = []
         elif self.step_count >= self.max_steps:
             truncated = np.ones(len(self.agents))
-            rewards = {f"{a}": 0 for a in self.agents}
+            trunc_reward = len(self.unburnt_trees) / self.grid_size_without_walls ** 2
+            rewards = {f"{a}": trunc_reward for a in self.agents}
             # self.agents = []
             # self.agents_storage = []
         else:
@@ -1053,12 +1055,15 @@ class WildfireEnv(MultiGridEnv):
             # Add reward for each unburnt tree
             # alpha reward coeff = 1
             agent_rewards += len(self.unburnt_trees) / self.grid_size_without_walls ** 2
-            for tree in trees_to_burnt_state:
-                if tree.agent_above:
+            # Only used for *_adjacent rewards
+            exst_trees_pos = np.array([[*tree.pos] for tree in trees_to_burnt_state if tree.agent_above])
+            # exst_trees_pos = np.array([[*tree.pos] for tree in self.agents_storage])
+
+            for tree_pos in exst_trees_pos:
             # Add reward to agent index which extinguished the fire
             # beta reward coeff = 3
-                    a = self.grid.get(*tree.pos)
-                    agent_rewards[a.index] += 3
+                a = self.grid.get(*tree_pos).index
+                agent_rewards[a] += 3
             # Reward accounts for each action blocking other agents (including itself)
             # Moving/Congesting agent coeff = 0.5
             for a in blocking_agent_index:
@@ -1091,6 +1096,7 @@ class WildfireEnv(MultiGridEnv):
                 # Beta+ reward coeff = 1
                         agent_rewards[a] += 1 if tree.type == "tree" and tree.state == 1 else -1
                 case "islands_size", True:
+                    agent_rewards -= 0.5 * len(trees_to_fire_state)
                     next_fire_board = self.connected_component()
                     clusters, counts = np.unique(self.fire_board[:][:][2], return_counts=True)
                     # Remove the -1 unexplored cluster
@@ -1108,9 +1114,10 @@ class WildfireEnv(MultiGridEnv):
                     next_clusters = next_clusters[next_counts > 2]
                     # Find the difference in clusters
                     if len(next_clusters) < len(clusters):
-                        agent_rewards += np.sum(counts) - np.sum(next_counts) / self.grid_size_without_walls ** 2
+                        agent_rewards += 50. * (np.sum(counts) - np.sum(next_counts)) / self.grid_size_without_walls ** 2
                     self.fire_board = next_fire_board
                 case "fire_islands_size", True:
+                    agent_rewards -= 0.5 * len(trees_to_fire_state)
                     next_fire_board = self.connected_component(avoided_conditions= [lambda obj: obj.type == "tree" and obj.state==2])
                     clusters, counts = np.unique(self.fire_board[:][:][2], return_counts=True)
                     # Remove the -1 unexplored cluster
@@ -1124,9 +1131,74 @@ class WildfireEnv(MultiGridEnv):
                     next_clusters = next_clusters[next_counts > 2]
                     # Find the difference in clusters
                     if len(next_clusters) < len(clusters):
-                        agent_rewards += np.sum(counts) - np.sum(next_counts) / self.grid_size_without_walls ** 2
+                        agent_rewards += 50. * (np.sum(counts) - np.sum(next_counts)) / self.grid_size_without_walls ** 2
                     self.fire_board = next_fire_board
-                case _, True:  
+                case "fire_entropy", True:
+                    agent_rewards -= 0.5 * len(trees_to_fire_state)
+                    next_fire_board = self.connected_component()[:][:][0]
+                    next_fire_board = next_fire_board[next_fire_board > -1]
+                    next_dt = np.sum(next_fire_board)
+                    dt = np.sum(self.fire_board)
+                    agent_rewards += 2. * dt > next_dt + max(dt - next_dt, 0)
+                    self.fire_board = next_fire_board
+                case "fire_adjacent", True:
+                    agent_rewards -= 0.5 * len(trees_to_fire_state)
+                    for tree_pos in exst_trees_pos:
+                        a = self.grid.get(*tree_pos).index
+                        # Reward for adjacent trees to the extinguished fire
+                        agent_rewards[a] += 2. ** self.neighbors_on_fire(tree_pos, state="healthy")
+                case "agent_adjacent", True:
+                    agent_rewards -= 0.5 * len(trees_to_fire_state)
+                    # Unique pairs of trees that were extinguished
+                    # Broadcasting to get all possible combinations of tree coordinates
+                    # combinations = np.transpose([np.tile(exst_trees, len(exst_trees)), np.repeat(exst_trees, len(exst_trees))])
+                    for pos_i, pos_j in combinations(exst_trees_pos, 2):
+                        agent_i = self.grid.get(*pos_i).index
+                        agent_j = self.grid.get(*pos_j).index
+                        tree_dt = manhattan_distance(pos_i, pos_j)
+                        if tree_dt <= self.grid_size_without_walls // 2:
+                            agent_rewards[agent_i] += 2.**(3-tree_dt)
+                            agent_rewards[agent_j] += 2.**(3-tree_dt)
+                        if tree_dt <= 2:
+                            agent_rewards[agent_i] += 10
+                            agent_rewards[agent_j] += 10
+                case "agent_healthy_adjacent", True:
+                    agent_rewards -= 0.5 * len(trees_to_fire_state)
+                    # Unique pairs of trees that were extinguished
+                    # Broadcasting to get all possible combinations of tree coordinates
+                    # combinations = np.transpose([np.tile(exst_trees, len(exst_trees)), np.repeat(exst_trees, len(exst_trees))])
+                    for pos_i, pos_j in combinations(exst_trees_pos, 2):
+                        agent_i = self.grid.get(*pos_i).index
+                        agent_j = self.grid.get(*pos_j).index
+# TODO: USE A DIFFERENT FUNC IN DIAGONALS BECOME ADJACENT
+                        tree_dt = manhattan_distance(pos_i, pos_j)
+                        agent_rewards[agent_i] += 2.**(3-tree_dt) 
+                        agent_rewards[agent_j] += 2.**(3-tree_dt)
+# TODO: INCREASE IF DIAGONALS BECOME ADJACENT
+                        if tree_dt > 2:
+                            continue
+# Selections of all possible adjacencies
+                        adj_trees = 0
+                        for i, r in enumerate([(1, 0), (0, 1), (-1, 0), (0, -1)]):
+# Two agents can't be in the same tile
+                            for s in [(1, 0), (0, 1), (-1, 0), (0, -1)].pop(i):
+                                neighbor_pos_i = pos_i + r
+                                neighbor_pos_j = pos_j + s
+                                # If positions don't match, skip
+                                if neighbor_pos_i != neighbor_pos_j:
+                                    continue
+                                # Find if position is in grid and has a healthy tree
+                                neighbor_pos = neighbor_pos_i
+                                if neighbor_pos[0] >= 0 and neighbor_pos[0] < self.helper_grid.width:
+                                    if neighbor_pos[1] >= 0 and neighbor_pos[1] < self.helper_grid.height:
+                                        o = self.helper_grid.get(*neighbor_pos)
+                                        if o is not None and o.type == "tree":
+                                            if o.state == STATE_TO_IDX_WILDFIRE["healthy"]:
+                                                adj_trees += 1
+
+                        agent_rewards[agent_i] += 5 + adj_trees
+                        agent_rewards[agent_j] += 5 + adj_trees
+                case _, True:   
                     agent_rewards -= 0.5 * len(trees_to_fire_state)
                     
         # agent rewards dictionary
