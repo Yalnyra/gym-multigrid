@@ -1,26 +1,37 @@
 import os
 import time
-import sys
+from copy import deepcopy
 import numpy as np
+import matplotlib.pyplot as plt
+import torch
+from torch.optim.lr_scheduler import LRScheduler
 import gymnasium as gym
 import pettingzoo as pz
-# from pettingzoo.utils.conversions import parallel_to_aec
-import gym_multigrid
 from pz_multigrid.envs import WildfireEnv
 from gym_multigrid.utils.misc import save_frames_as_gif
-from sbx import DQN, TQC, CrossQ, TD3
+# Stable baselines 3
 from sbx import PPO
-# from stable_baselines3 import PPO
-# from sb3_contrib import RecurrentPPO, ARS
 from stable_baselines3.common.callbacks import (
     CheckpointCallback,
     EvalCallback,
     StopTrainingOnNoModelImprovement,
 )
 from tests.tensorboard.log_callback import TensorboardCallback
-from supersuit import pettingzoo_env_to_vec_env_v1, concat_vec_envs_v1
 import wandb
 from wandb.integration.sb3 import WandbCallback
+# AgileRL HPO & algorithms
+from agilerl.algorithms import maddpg, matd3, dqn_rainbow
+from agilerl.algorithms.ppo import PPO as agile_ppo
+from agilerl.training.train_multi_agent import train_multi_agent
+from agilerl.components.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from agilerl.hpo.mutation import Mutations
+from agilerl.hpo.tournament import TournamentSelection
+from agilerl.utils.utils import create_population, plot_population_score
+
+# Async Env parameter sharing
+from agilerl.vector.pz_async_vec_env import AsyncPettingZooVecEnv
+from supersuit import pettingzoo_env_to_vec_env_v1, concat_vec_envs_v1
+
 
 
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -44,12 +55,8 @@ def create_env(render_mode=None, **kwaargs):
         size=config["world_size"],
         initial_fire_size=3,
         cooperative_reward=True,
-        render_selfish_region_boundaries=True,
-        log_selfish_region_metrics=True,
-        selfish_region_xmin=[2] * config['n_env'],
-        selfish_region_xmax=[8] * config['n_env'],
-        selfish_region_ymin=[2] * config['n_env'],
-        selfish_region_ymax=[8] * config['n_env'],
+        render_selfish_region_boundaries=False,
+        log_selfish_region_metrics=False,
     )
     return env
 
@@ -58,8 +65,15 @@ def create_env(render_mode=None, **kwaargs):
 def wrap_env(env, **kwaargs):
     # Add zero observation for agents upon death, useful with dynamic agents
     # env = black_death_v3(env)
-    env = pettingzoo_env_to_vec_env_v1(env)
-    env = concat_vec_envs_v1(env, config['n_env'], num_cpus=1, base_class="stable_baselines3")
+    match config['training_type']:
+        case 'sb3':
+            env = pettingzoo_env_to_vec_env_v1(env)
+            env = concat_vec_envs_v1(env, config['n_env'], num_cpus=1, base_class="stable_baselines3")
+        case 'agile_rl':
+            # env = pettingzoo_env_to_vec_env_v1(env)
+            # env = concat_vec_envs_v1(env, config['n_env'], num_cpus=1, base_class="stable_baselines3")
+            # env = AsyncPettingZooVecEnv([lambda: env for _ in range(config['n_env'])])
+            env = AsyncPettingZooVecEnv([lambda:env])
     return env
 
 
@@ -82,101 +96,63 @@ def model_PPO(env, **PPO_kwaargs):
         tensorboard_log=config["tensorboard"]
     )
 
-
-
-def model_CrossQ(env, **CrossQ_kwaargs):
-    return CrossQ(
-        "MlpPolicy",
-        env,
-        verbose=0,
-        learning_rate=1e-4,
-        batch_size=128,
-        gamma=0.99,
-        use_sde=True,
-        ent_coef="auto_0.05",
-        tensorboard_log=f"{config['tensorboard']}",
-    )
-
-
-def model_TQC(env, **TQC_kwaargs):
-    return TQC(
-        "MlpPolicy",
-        env,
-        verbose=0,
-        # learning_rate=1e-4,
-        batch_size=128,
-        tau=0.05,
-        gamma=0.99,
-        top_quantiles_to_drop_per_net=2,
-        use_sde=True,
-        ent_coef="auto_0.05",
-        tensorboard_log=f"{config['tensorboard']}",
-    )
-
 def model_DQN(env, **DQN_kwaargs):
-    return DQN(
-        "MlpPolicy",
-        env,
-        verbose=0,
-        learning_rate=1e-4,
-        batch_size=256,
-        tau=0.05,
-        gamma=0.99,
-        # exploration_initial_eps=0.05,
-        tensorboard_log=config["tensorboard"],
+    observation_spaces = [env.single_observation_space(agent).shape for agent in env.agents]
+    action_spaces = [env.single_action_space(agent).n for agent in env.agents]
+    return dqn_rainbow.RainbowDQN(
+        observation_spaces,
+        action_spaces,
+        False,
+        config['encoder_config'],
+        **config['INIT_HP'],
+        device="cuda" if torch.cuda.is_available() else "cpu",
     )
 
-def model_TD3(env, **kwaargs):
-    return TD3(
-        "MlpPolicy",
-        env=env,
-        tensorboard_log=config["tensorboard"])
+def model_MADDPG(env, **kwaargs):
+    observation_spaces = [env.observation_space(agent).shape[1:] for agent in env.agents]
+    action_spaces = [env.single_action_space(agent).n for agent in env.agents]
+    # max_action = [space.n for space in action_spaces]
+    # min_action = [space.start for space in action_spaces]
+    return maddpg.MADDPG(
+        observation_spaces,
+        action_spaces,
+        False,
+        env.num_agents,
+        env.agents,
+        net_config=config['encoder_config'],
+        discrete_actions=True,
+        max_action=None,
+        min_action=None,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        **config['INIT_HP'],
+    )
 
-# def model_RPPO(env, **RPPO_kwaargs):
-#     nn_t = (128, 128)
-#     policy_kwargs = dict(net_arch=dict(pi=nn_t, vf=nn_t))
-#     return RecurrentPPO(
-#         "MlpLstmPolicy",
-#         env,
-#         verbose=0,
-#         learning_rate=1e-4,
-#         n_steps=2048,
-#         batch_size=128,
-#         n_epochs=10,
-#         gamma=0.99,
-#         policy_kwargs=policy_kwargs,
-#         gae_lambda=0.95,
-#         clip_range=0.2,
-#         ent_coef=0.05,
-#         tensorboard_log=config["tensorboard"],
-#     )
+def model_MATD3(env: AsyncPettingZooVecEnv, **kwaargs):
+    observation_spaces = [env.observation_space(agent).shape[1:] for agent in env.agents]
+    action_spaces = [env.single_action_space(agent).n for agent in env.agents]
+    # max_action = [space.n for space in action_spaces]
+    # min_action = [space.start for space in action_spaces]
 
-# def model_ARS(env, **ARS_kwaargs):
-#     nn_t = [128, 128]
-#     policy_kwargs = dict(net_arch=nn_t)
-#     return ARS(
-#         "MlpPolicy",
-#         env,
-#         n_delta=20,
-#         n_top=5,
-#         learning_rate=3e-4,
-#         delta_std=0.05,
-#         zero_policy=True,
-#         alive_bonus_offset=0,
-#         n_eval_episodes=1000,
-#         policy_kwargs=policy_kwargs,
-#         stats_window_size=100,
-#         tensorboard_log=f"{config['tensorboard']}",
-#     )
+    # return AgileRL policy
+    return matd3.MATD3(
+        observation_spaces,
+        action_spaces,
+        False,
+        env.num_agents,
+        env.agents,
+        net_config=config['encoder_config'],
+        discrete_actions=True,
+        max_action=None,
+        min_action=None,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        **config['INIT_HP'],
+    )
 
 def setup_callbacks(eval_env, **kwaargs):
     checkpoint_callback = CheckpointCallback(
         save_freq=10000,
         save_path="./checkpoints/",
         name_prefix=f"{config['algorithm']}_model",
-    )
-    cutoff_callback = StopTrainingOnNoModelImprovement(
-        max_no_improvement_evals=10, min_evals=30
     )
     tensorboard_callback = TensorboardCallback()
     eval_callback = EvalCallback(
@@ -195,7 +171,7 @@ def setup_callbacks(eval_env, **kwaargs):
     return [checkpoint_callback, eval_callback, tensorboard_callback, log_callback]
 
 
-def train_model(model, callbacks, **kwaargs):
+def train_sb3(model, callbacks, **kwaargs):
     model.learn(
         total_timesteps=config['train_epochs'],
         tb_log_name=f"{config['run_id']}",
@@ -205,28 +181,36 @@ def train_model(model, callbacks, **kwaargs):
     model.save(f"{config['model_save_path']}")
 
 
-def load_model(env, model_path: str, definition=PPO):
+def load_model(model_path: str, env=None, definition=PPO):
     # does it need env?
-    return definition.load(model_path)
+    return definition.load(model_path, env=env)
 
 
 def test_model(env, model=None, **kwaargs):
-    steps = 0
-    terminated, truncated = {0: False}, {0: False}
-    frac_burned = -0.1
     frames = []
     for ep in range(config["n_episodes"]):
-        (obs, _) = env.reset()
+        steps = 0
+        terminated, truncated = {0: False}, {0: False}
+        frac_burned = -0.1
+        (obs, info) = env.reset()
         ep_reward = 0.
         while not terminated[0]:
             agents = list(range(wandb.config['n_env']))
-            
+            actions = {agent: env.action_space().sample() for agent in agents}
             inference_dt = time.time()
+            # Sample actual actions
             if model is not None:
                 # actions, states = model.predict(obs, deterministic=True)
-                actions = {agent: model.predict(obs[agent], deterministic=True)[0] for agent in agents}
-            else:
-                actions = {agent: env.action_space().sample() for agent in agents}
+                match config['training_type']:
+                    case 'sb3':
+                        actions = {agent: model.predict(obs[agent], deterministic=False)[0] for agent in agents}
+                    case 'agile_rl':
+                        _, actions = model.get_action(
+                            obs, training=False, infos=info
+                        )
+                        
+                print("using model, actions are: ", actions)
+
             inference_dt = 1.0 / (time.time() - inference_dt + 1e-6)
             
             obs, reward, terminated, truncated, infos = env.step(actions)
@@ -251,12 +235,6 @@ def test_model(env, model=None, **kwaargs):
                     "Inference FPS": inference_dt,
                 }
             )
-
-            # if not all(terminated.values()) and not all(truncated.values()):
-            #     print("--------------EPISODE-END------------\n")
-            # if old_frac_burned == frac_burned:
-            #     print("--------------EPISODE-END------------\n")
-            #     break
         # Total episode reward
         wandb.log(
             {
@@ -282,11 +260,52 @@ def train(model_class, model_construct: callable, config: dict):
     # Create the model from model_construct func
     model = model_construct(env=train_env, config=config)
     if not config["from_scratch"]:
-        model = load_model(train_env, model_path, model_class)
-    # Setup callbacks
-    callbacks = setup_callbacks(eval_env, config=config)
+        model = load_model(model_path, train_env, model_class)
+    
+    train_env.reset()
+
     # Train the model
-    train_model(model, callbacks, config=config)
+    match config['training_type']:
+        case 'sb3':
+            callbacks = setup_callbacks(eval_env, config=config)
+            train_sb3(model, callbacks, config=config)
+        case 'agile_rl':
+            # Initialise separate copies of the agent policy algorithm
+            pop = [deepcopy(model) for _ in range(config['n_env'])]
+            # Configure the multi-agent replay buffer
+            field_names = ["state", "action", "reward", "next_state", "done"]
+            memory = MultiAgentReplayBuffer(
+                config["memory_size"],
+                field_names=field_names,
+                agent_ids=train_env.unwrapped.agents,
+                device=device,
+            )
+            trained_pop, pop_fitnesses = train_multi_agent(
+                env=train_env,  # Pettingzoo-style environment
+                env_name=config['run_id'],  # Environment name
+                algo=config['algorithm'],  # Algorithm
+                pop=pop,  # Population of agents
+                memory=memory,  # Replay buffer
+                INIT_HP=config['INIT_HP'],  # IINIT_HP dictionary
+                net_config=config['encoder_config'],  # Network configuration
+                max_steps=config['train_epochs'],  # Max number of training steps
+                evo_steps=10000,  # Evolution frequency
+                eval_steps=500,  # Number of steps in evaluation episode
+                eval_loop=config['train_epochs'] // 5000,  # Number of evaluation episodes
+                learning_delay=1000,  # Steps before starting learning
+                target=200.,  # Target score for early stopping
+                checkpoint=10000,
+                checkpoint_path=config['model_save_path'],
+                wb=True,  # Weights and Biases tracking
+            )
+            plt.figure()
+            plt.plot(pop_fitnesses)
+            plt.title("Score History - Mutations")
+            plt.xlabel("Steps")
+            plt.ylim(bottom=-400)
+            plt.show()
+            best_model = trained_pop[pop_fitnesses.index(max(pop_fitnesses[-1]))]
+            best_model.save_checkpoint(f"{config['model_save_path']}/{config['run_id']}-elite.pt")
     eval_env.close()
 
 
@@ -295,8 +314,9 @@ def test(model_class, **kwaargs):
     # Load the trained model from model_class constructor
     model=None
     if config['algorithm'] != "Random":
-        model = model_class.load(f'{config["model_save_path"]}/model.zip')
-        wandb.log_model(path=f'./{config["model_save_path"]}',name=f'model.zip')
+        model_name = f'{config["run_id"]}_0_{config["train_epochs"]}.pt'
+        model = model_class.load(f'./{config["model_save_path"]}{model_name}')
+        wandb.log_model(path=f'./{config["model_save_path"]}',name=model_name)
 
     # Test the trained model
     test_model(test_env, model, config=config)
@@ -310,23 +330,45 @@ def test(model_class, **kwaargs):
 ##############################################
 # Change the algorithm name here
 if __name__ == "__main__":
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     config = {
-        "algorithm": "PPO",
-        "training_type":"central",
-        "run_id": "ppo_fire_adjacent_10_13",
+        "algorithm": "MATD3",
+        "INIT_HP":{
+            # "POPULATION_SIZE": 5,
+            "batch_size": 16,  # Batch size
+            "O_U_noise": True,  # Ornstein Uhlenbeck action noise
+            "expl_noise": 0.1,  # Action noise scale
+            "mean_noise": 0.0,  # Mean action noise
+            "theta": 0.15,  # Rate of mean reversion in OU noise
+            "dt": 0.01,  # Timestep for OU noise
+            "lr_actor": 0.001,  # Actor learning rate
+            "lr_critic": 0.001,  # Critic learning rate
+            "gamma": 0.99,  # Discount factor
+            "tau": 0.01,  # For soft update of target parameters
+            "learn_step": 5,  # Learning frequency
+            "policy_freq": 2,  # Policy frequency
+        },
+        "encoder_config": {
+            "arch": "mlp",
+            "hidden_size": [32, 32],  # Actor hidden size
+            },
+        "training_type":"agile_rl",
+        "run_id": "matd3_2_13",
         "from_scratch": True,
-        "job_type": "train",
-        "train_epochs": 300_000,
-        "n_episodes": 5,
-        "n_env": 10,
+        "job_type": "test",
+        "train_epochs": 100_000,
+        "memory_size": 10000,  # Max memory buffer size
+        "n_episodes": 10,
+        "n_env": 2,
         "world_size": 13,
         "alpha_transition": 0.3,
         "beta_transition": 0.8,
         "agent_beta_impact": 0.8,
         "obs_type": "typed_one_hot",
-        "reward_type": 'fire_adjacent',
+        "reward_type": '',
         "tensorboard": "./out/logs/wildfire/",
-        "model_save_path":"./out/models/ppo_fire_adjacent_10_13",
+        "model_save_path":"./out/models/",
     }
 
     test_env = create_env(render_mode="rgb_array", config=config)
@@ -351,5 +393,6 @@ if __name__ == "__main__":
         # python -c "import wandb; print(wandb.util.generate_id())"
         # id="8up8c0w8",
     ):
-        train(PPO,model_PPO, config)
-        test(PPO, config = config)
+        if config['job_type'] == "train":
+            train(matd3.MATD3,model_MATD3, config)
+        test(matd3.MATD3, config = config)

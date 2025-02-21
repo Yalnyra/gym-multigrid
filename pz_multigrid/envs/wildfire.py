@@ -708,7 +708,11 @@ class WildfireEnv(MultiGridEnv):
                 self.fire_board = self.connected_component()[:][:][0]
                 self.fire_board = self.fire_board[self.fire_board > -1]
         # create info dictionary
-        self.info = {"burnt trees": self.burnt_trees, "unburnt trees": len(self.unburnt_trees), "obs size": self.observation_space()}
+        self.info = {"burnt trees": self.burnt_trees, 
+                     "unburnt trees": len(self.unburnt_trees), }
+                    #  "env_defined_observations": self.observation_space(), }
+                    #  "env_defined_actions": np.arange(len(self.actions)),}
+                    # "blocking_actions": 0}
                 # in AECEnv/ParallelEnv, both obs and info must contain agents set as a subset 
         self.info = {a: self.info for a in self.agents}
         return self.obs, self.info
@@ -963,7 +967,8 @@ class WildfireEnv(MultiGridEnv):
         blocking_agent_index = []
         for i in order:
             next_pos = self.agents_storage[i].pos
-            match actions[i]:
+            action = actions[i]
+            match action:
                 case self.actions.STILL:
                         continue
                 case self.actions.NORTH:
@@ -975,10 +980,10 @@ class WildfireEnv(MultiGridEnv):
                 case self.actions.WEST:
                     next_pos = self.agents_storage[i].west_pos()
             next_cell = self.grid.get(*next_pos)
-            if next_cell is None and next_cell.can_overlap():
-                self.move_agent(i, next_cell)
-            # elif next_cell.type == 'agent':
-                # blocking_agent_index.append(self.agents_storage.index(next_cell))
+            if next_cell is None or next_cell.can_overlap():
+                self.move_agent(i, next_pos)
+            elif next_cell.type == 'agent':
+                blocking_agent_index.append(self.agents_storage.index(next_cell))
             elif next_cell.type == 'wall':
                 blocking_agent_index.append(i)
 
@@ -1039,13 +1044,13 @@ class WildfireEnv(MultiGridEnv):
         # check if episode is done
         if len(self.trees_on_fire) == 0:
             terminated = np.ones(len(self.agents))
-            rewards = {f"{a}": 0 for a in self.agents}
+            rewards = {a: 0 for a in self.agents}
             # self.agents = []
             # self.agents_storage = []
         elif self.step_count >= self.max_steps:
             truncated = np.ones(len(self.agents))
             trunc_reward = len(self.unburnt_trees) / self.grid_size_without_walls ** 2
-            rewards = {f"{a}": trunc_reward for a in self.agents}
+            rewards = {a: trunc_reward for a in self.agents}
             # self.agents = []
             # self.agents_storage = []
         else:
@@ -1206,8 +1211,7 @@ class WildfireEnv(MultiGridEnv):
 
         # get agent observations after the environment step
         self.obs = self._get_obs()
-        # next_obs = {a: agent_obs[a] for a in self.agents}
-
+        # print("Is done: ",self.step_count, terminated[0])
         # info dictionary
         self.info = {"burnt trees": self.burnt_trees, "unburnt trees": len(self.unburnt_trees), }
         # self.info = {a: self.info.update({"blocked actions": blocking_agent_index.count(a)}) for a in self.agents}
