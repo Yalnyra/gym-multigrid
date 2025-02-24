@@ -11,3 +11,5 @@ ppo_random_collect_tensorboard/*
 out/*
 wandb/*
 .DS_Store
+outputs/
+wandb/

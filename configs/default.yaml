@@ -1,0 +1,47 @@
+defaults:
+  - _self_
+  # - logger: filesystemlogger
+  # - override hydra/job_logging: file
+  # - override hydra/launcher: submitit_local
+wandb: 
+  enabled: True
+  project: Wildfire
+
+
+run_id: matd3_2_13
+"algorithm": MATD3
+training_type: agile_rl
+"INIT_HP":
+    # "POPULATION_SIZE": 5,
+    batch_size: 16  # Batch size
+    O_U_noise: True  # Ornstein Uhlenbeck action noise
+    expl_noise: 0.1  # Action noise scale
+    mean_noise: 0.0  # Mean action noise
+    theta: 0.15  # Rate of mean reversion in OU noise
+    dt: 0.01  # Timestep for OU noise
+    lr_actor: 0.001  # Actor learning rate
+    lr_critic: 0.001  # Critic learning rate
+    gamma: 0.99  # Discount factor
+    tau: 0.01  # For soft update of target parameters
+    learn_step: 5  # Learning frequency
+    policy_freq: 2  # Policy frequency
+encoder_config:
+    arch: mlp
+    hidden_size: [32, 32]  # Actor hidden size
+from_scratch: True
+job_type: test
+train_epochs: 100000
+valid_interval: 10000
+memory_size: 10000  # Max memory buffer size
+n_episodes: 10
+n_env: 2
+n_flashpoints: 3
+world_size: 13
+alpha_transition: 0.3
+beta_transition: 0.8
+agent_beta_impact: 0.8
+obs_type: typed_one_hot
+reward_type: fire_adjacent
+tensorboard: out/logs/wildfire/
+model_save_path: out/models/${run_id}
+device: "cpu"

@@ -1,6 +1,7 @@
 import os
 import time
 from copy import deepcopy
+import hydra.core
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -17,16 +18,18 @@ from stable_baselines3.common.callbacks import (
     StopTrainingOnNoModelImprovement,
 )
 from tests.tensorboard.log_callback import TensorboardCallback
+import hydra
+from omegaconf import OmegaConf, DictConfig
 import wandb
 from wandb.integration.sb3 import WandbCallback
 # AgileRL HPO & algorithms
 from agilerl.algorithms import maddpg, matd3, dqn_rainbow
 from agilerl.algorithms.ppo import PPO as agile_ppo
-from agilerl.training.train_multi_agent import train_multi_agent
+from train_multi_agent import train_multi_agent
 from agilerl.components.multi_agent_replay_buffer import MultiAgentReplayBuffer
 from agilerl.hpo.mutation import Mutations
 from agilerl.hpo.tournament import TournamentSelection
-from agilerl.utils.utils import create_population, plot_population_score
+from agilerl.utils.utils import create_population
 
 # Async Env parameter sharing
 from agilerl.vector.pz_async_vec_env import AsyncPettingZooVecEnv
@@ -37,7 +40,7 @@ from supersuit import pettingzoo_env_to_vec_env_v1, concat_vec_envs_v1
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
-def create_env(render_mode=None, **kwaargs):
+def create_env(config:DictConfig, render_mode=None):
     """Function to test the environment's functionality. Runs episodes with random agents in the Wildfire environment and save episode renders as GIFs."""
     start_pos = np.random.uniform(low=1, high=config['world_size']-1, size=(config['n_env'], 2))
     env = WildfireEnv(
@@ -62,7 +65,7 @@ def create_env(render_mode=None, **kwaargs):
 
 
 # Could replace DummyVecEnv w/ SubProcEnv if using SAC model
-def wrap_env(env, **kwaargs):
+def wrap_env(env, config:DictConfig):
     # Add zero observation for agents upon death, useful with dynamic agents
     # env = black_death_v3(env)
     match config['training_type']:
@@ -77,7 +80,7 @@ def wrap_env(env, **kwaargs):
     return env
 
 
-def model_PPO(env, **PPO_kwaargs):
+def model_PPO(env, config:DictConfig):
     nn_t = (128, 128, 128)
     policy_kwargs = dict(net_arch=dict(pi=nn_t, vf=nn_t))
     return PPO(
@@ -96,7 +99,7 @@ def model_PPO(env, **PPO_kwaargs):
         tensorboard_log=config["tensorboard"]
     )
 
-def model_DQN(env, **DQN_kwaargs):
+def model_DQN(env, config:DictConfig):
     observation_spaces = [env.single_observation_space(agent).shape for agent in env.agents]
     action_spaces = [env.single_action_space(agent).n for agent in env.agents]
     return dqn_rainbow.RainbowDQN(
@@ -108,7 +111,7 @@ def model_DQN(env, **DQN_kwaargs):
         device="cuda" if torch.cuda.is_available() else "cpu",
     )
 
-def model_MADDPG(env, **kwaargs):
+def model_MADDPG(env, config:DictConfig):
     observation_spaces = [env.observation_space(agent).shape[1:] for agent in env.agents]
     action_spaces = [env.single_action_space(agent).n for agent in env.agents]
     # max_action = [space.n for space in action_spaces]
@@ -127,7 +130,7 @@ def model_MADDPG(env, **kwaargs):
         **config['INIT_HP'],
     )
 
-def model_MATD3(env: AsyncPettingZooVecEnv, **kwaargs):
+def model_MATD3(env: AsyncPettingZooVecEnv, config:DictConfig):
     observation_spaces = [env.observation_space(agent).shape[1:] for agent in env.agents]
     action_spaces = [env.single_action_space(agent).n for agent in env.agents]
     # max_action = [space.n for space in action_spaces]
@@ -148,11 +151,11 @@ def model_MATD3(env: AsyncPettingZooVecEnv, **kwaargs):
         **config['INIT_HP'],
     )
 
-def setup_callbacks(eval_env, **kwaargs):
+def setup_callbacks(eval_env, config:DictConfig):
     checkpoint_callback = CheckpointCallback(
         save_freq=10000,
-        save_path="./checkpoints/",
-        name_prefix=f"{config['algorithm']}_model",
+        save_path=f".{config['model_save_path']}/checkpoints/",
+        name_prefix=f"{config['run_id']}",
     )
     tensorboard_callback = TensorboardCallback()
     eval_callback = EvalCallback(
@@ -171,7 +174,7 @@ def setup_callbacks(eval_env, **kwaargs):
     return [checkpoint_callback, eval_callback, tensorboard_callback, log_callback]
 
 
-def train_sb3(model, callbacks, **kwaargs):
+def train_sb3(model, callbacks, config:DictConfig):
     model.learn(
         total_timesteps=config['train_epochs'],
         tb_log_name=f"{config['run_id']}",
@@ -186,7 +189,7 @@ def load_model(model_path: str, env=None, definition=PPO):
     return definition.load(model_path, env=env)
 
 
-def test_model(env, model=None, **kwaargs):
+def test_model(env, config:DictConfig, model=None):
     frames = []
     for ep in range(config["n_episodes"]):
         steps = 0
@@ -195,7 +198,7 @@ def test_model(env, model=None, **kwaargs):
         (obs, info) = env.reset()
         ep_reward = 0.
         while not terminated[0]:
-            agents = list(range(wandb.config['n_env']))
+            agents = list(range(config['n_env']))
             actions = {agent: env.action_space().sample() for agent in agents}
             inference_dt = time.time()
             # Sample actual actions
@@ -218,8 +221,8 @@ def test_model(env, model=None, **kwaargs):
             frames.append(env.render())
             mean_reward_per_agent = np.mean(list(reward.values()))
             ep_reward += float(mean_reward_per_agent)
-            frac_burned = infos[0]['burnt trees'] / ((wandb.config["world_size"] - 2) ** 2)
-            frac_unburned = infos[0]['unburnt trees'] / ((wandb.config["world_size"] - 2) ** 2)
+            frac_burned = infos[0]['burnt trees'] / ((config["world_size"] - 2) ** 2)
+            frac_unburned = infos[0]['unburnt trees'] / ((config["world_size"] - 2) ** 2)
             print(
                 f"Reward: {reward}, \n burnt trees %: {frac_burned}, \n terminated: {terminated}, truncated: {truncated}, Frames length: {len(frames)}"
                 # , Inference time in ms: {inference_dt}"
@@ -241,21 +244,21 @@ def test_model(env, model=None, **kwaargs):
                 "total_episode_reward": ep_reward,
             }
         )
-    save_frames_as_gif(frames=frames, path=wandb.config['tensorboard'], filename=f"{wandb.config['run_id']}-{wandb.config['job_type']}", ep=config['train_epochs'], fps=5)
-    wandb.log({"video": wandb.Video(f"{wandb.config['tensorboard']}/{wandb.config['run_id']}-{wandb.config['job_type']}-{config['train_epochs']}.gif", format="gif")})
+    save_frames_as_gif(frames=frames, path=config['tensorboard'], filename=f"{config['run_id']}-{config['job_type']}", ep=config['train_epochs'], fps=5)
+    wandb.log({"video": wandb.Video(f"{config['tensorboard']}/{config['run_id']}-{config['job_type']}-{config['train_epochs']}.gif", format="gif")})
         
 
 
-def train(model_class, model_construct: callable, config: dict):
+def train(model_class, model_construct: callable, config: DictConfig):
     # Create and wrap the training environment
-    model_path = f"{config['model_save_path']}{config['run_id']}"
-    train_env = create_env(render_mode=None)
+    model_path = f"{config['model_save_path']}/{config['run_id']}"
+    train_env = create_env(config, render_mode=None)
     print("Original observation space shape:", train_env.observation_space().shape)
-    train_env = wrap_env(train_env)
+    train_env = wrap_env(train_env, config)
     # print("Wrapped observation space shape:", train_env.observation_space().shape)
     # Create and wrap the evaluation environment
-    eval_env = create_env(render_mode="rgb_array")
-    eval_env = wrap_env(eval_env)
+    eval_env = create_env(config, render_mode="rgb_array")
+    eval_env = wrap_env(eval_env, config)
 
     # Create the model from model_construct func
     model = model_construct(env=train_env, config=config)
@@ -278,7 +281,7 @@ def train(model_class, model_construct: callable, config: dict):
                 config["memory_size"],
                 field_names=field_names,
                 agent_ids=train_env.unwrapped.agents,
-                device=device,
+                device=config['device'],
             )
             trained_pop, pop_fitnesses = train_multi_agent(
                 env=train_env,  # Pettingzoo-style environment
@@ -304,95 +307,85 @@ def train(model_class, model_construct: callable, config: dict):
             plt.xlabel("Steps")
             plt.ylim(bottom=-400)
             plt.show()
-            best_model = trained_pop[pop_fitnesses.index(max(pop_fitnesses[-1]))]
-            best_model.save_checkpoint(f"{config['model_save_path']}/{config['run_id']}-elite.pt")
+            elite_idx = pop_fitnesses.index(max(pop_fitnesses[-1]))
+            suffix = f'_{elite_idx}_{config["train_epochs"]}.pt'
+            best_model = trained_pop[int(elite_idx)]
+            best_model.save_checkpoint(f"{config['model_save_path']}{suffix}")
     eval_env.close()
 
 
-def test(model_class, **kwaargs):
-    test_env = create_env(render_mode="rgb_array", config=config)
+def test(model_class, config:DictConfig):
+    test_env = create_env(config, render_mode="rgb_array")
     # Load the trained model from model_class constructor
     model=None
     if config['algorithm'] != "Random":
-        model_name = f'{config["run_id"]}_0_{config["train_epochs"]}.pt'
-        model = model_class.load(f'./{config["model_save_path"]}{model_name}')
-        wandb.log_model(path=f'./{config["model_save_path"]}',name=model_name)
+        model_suffix = f'_0_{config["train_epochs"]}.pt'
+        path = f"{config['model_save_path']}{model_suffix}"
+        model = model_class.load(path)
+        wandb.log_model(path=path,name=f"{config['run_id']}{model_suffix}")
 
     # Test the trained model
-    test_model(test_env, model, config=config)
+    test_model(test_env, config, model=model)
 
     # Close the environment
     test_env.close()
 
 
 ##############################################
-# MAKE CHANGES HERE
+# MAKE CHANGES IN /$ROOT/config files
 ##############################################
-# Change the algorithm name here
-if __name__ == "__main__":
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+@hydra.main(config_path="configs/", config_name="default", version_base="1.3")
+def run(cfg: DictConfig):
 
-    config = {
-        "algorithm": "MATD3",
-        "INIT_HP":{
-            # "POPULATION_SIZE": 5,
-            "batch_size": 16,  # Batch size
-            "O_U_noise": True,  # Ornstein Uhlenbeck action noise
-            "expl_noise": 0.1,  # Action noise scale
-            "mean_noise": 0.0,  # Mean action noise
-            "theta": 0.15,  # Rate of mean reversion in OU noise
-            "dt": 0.01,  # Timestep for OU noise
-            "lr_actor": 0.001,  # Actor learning rate
-            "lr_critic": 0.001,  # Critic learning rate
-            "gamma": 0.99,  # Discount factor
-            "tau": 0.01,  # For soft update of target parameters
-            "learn_step": 5,  # Learning frequency
-            "policy_freq": 2,  # Policy frequency
-        },
-        "encoder_config": {
-            "arch": "mlp",
-            "hidden_size": [32, 32],  # Actor hidden size
-            },
-        "training_type":"agile_rl",
-        "run_id": "matd3_2_13",
-        "from_scratch": True,
-        "job_type": "test",
-        "train_epochs": 100_000,
-        "memory_size": 10000,  # Max memory buffer size
-        "n_episodes": 10,
-        "n_env": 2,
-        "world_size": 13,
-        "alpha_transition": 0.3,
-        "beta_transition": 0.8,
-        "agent_beta_impact": 0.8,
-        "obs_type": "typed_one_hot",
-        "reward_type": '',
-        "tensorboard": "./out/logs/wildfire/",
-        "model_save_path":"./out/models/",
-    }
-
-    test_env = create_env(render_mode="rgb_array", config=config)
+    agents = list(range(cfg['n_env']))
+    test_env = create_env(cfg, render_mode="rgb_array")
     obs, _ = test_env.reset()
     print(f"---------------First observation---------------- \n{obs[0].shape} \n")
-    agents = list(range(config['n_env']))
+    # agents = list(range(config['n_env']))
     actions = {agent: test_env.action_space().sample() for agent in agents}        
     obs, reward, terminated, truncated, infos = test_env.step(actions)
     while not terminated[0]:
-        print(f"\n \n \n After reset \n {obs[0]}")
+        print(f"\n \n \n After reset \n {obs[0].shape}")
         obs, reward, terminated, truncated, infos = test_env.step(actions)
 # Close the environment
     test_env.close()
+    
+    wandb.config = wandb.config = OmegaConf.to_container(
+        cfg, resolve=True, throw_on_missing=True
+    )
+
+
+    match cfg['algorithm']:
+        case 'PPO':
+            algo_cls = PPO
+            algo_constructor = model_PPO
+        case 'MATD3':
+            algo_cls = matd3.MATD3
+            algo_constructor = model_MATD3
+        case 'MADDPG':
+            algo_cls = maddpg.MADDPG
+            algo_constructor = model_MADDPG
+        case 'Rainbow':
+            raise PendingDeprecationWarning("Not tested implementation")
+            algo_cls = dqn_rainbow.RainbowDQN
+            algo_constructor = model_DQN
+        case _:
+            algo_cls = None
+            algo_constructor = None
+        
 
     with wandb.init(
-        project="Wildfire",
-        name=config["run_id"],
-        config=config,
+        project=cfg['wandb']['project'],
+        name=cfg["run_id"],
         sync_tensorboard=True,
-        job_type=config["job_type"],
+        job_type=cfg['job_type'],
         resume="allow",
         # python -c "import wandb; print(wandb.util.generate_id())"
         # id="8up8c0w8",
     ):
-        if config['job_type'] == "train":
-            train(matd3.MATD3,model_MATD3, config)
-        test(matd3.MATD3, config = config)
+        if cfg['job_type'] == "train":
+            train(algo_cls,algo_constructor, cfg)
+        test(algo_cls, cfg)
+
+if __name__ == "__main__":
+    run()
