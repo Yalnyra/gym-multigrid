@@ -4,6 +4,7 @@ name: maddpg
 algorithm:
   _target_: __main__.model_MADDPG
 
+training_type: agile_rl
 init_hp:  
   O_U_noise: True  # Ornstein Uhlenbeck action noise
   expl_noise: 0.3  # Action noise scale

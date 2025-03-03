@@ -283,7 +283,8 @@ def train(config: DictConfig):
             plt.xlabel("Steps")
             plt.ylim(bottom=-400)
             plt.show()
-            elite_idx = pop_fitnesses.index(max(pop_fitnesses[-1]))
+            last_fitness = pop_fitnesses[-1]
+            elite_idx = last_fitness.index(max(last_fitness))
             suffix = f'_{elite_idx}_{config["train_epochs"]}.pt'
             best_model = trained_pop[int(elite_idx)]
             best_model.save_checkpoint(f"{config['model_save_path']}{suffix}")

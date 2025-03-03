@@ -108,6 +108,7 @@ hydra:
       #   - fire_entropy
       #   - islands_size
       env.reward_type:
+        - default
         - islands_size
         - agent_above
         - islands_size
@@ -117,7 +118,7 @@ hydra:
         - agent_adjacent
         - agent_healthy_adjacent
       
-      defaults.algorithm:
+      algorithm:
         - ppo
         - matd3
         - maddpg

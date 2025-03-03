@@ -2,7 +2,7 @@ defaults:
   - _self_
   - algorithm: matd3
   - reward: default
-  # - sweeps: wandb
+  - sweeper: wandb
   #   optional: True
   - experiments/env_size: default
 
