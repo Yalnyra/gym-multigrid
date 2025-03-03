@@ -1223,7 +1223,10 @@ class WildfireEnv(MultiGridEnv):
         self.obs = self._get_obs()
         # print("Is done: ",self.step_count, terminated[0])
         # info dictionary
-        self.info = {"burnt trees": self.burnt_trees, "unburnt trees": len(self.unburnt_trees), }
+        burnt_frac = self.burnt_trees / (self.grid_size_without_walls ** 2)
+        unburnt_frac = len(self.unburnt_trees) / (self.grid_size_without_walls ** 2)
+
+        self.info = {"burnt trees": burnt_frac, "unburnt trees": unburnt_frac, }
         # self.info = {a: self.info.update({"blocked actions": blocking_agent_index.count(a)}) for a in self.agents}
         self.info = {a: self.info for a in self.agents}
         terminated = {idx: True if val==1. else False for idx, val in enumerate(terminated)}

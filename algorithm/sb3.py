@@ -6,7 +6,6 @@ from stable_baselines3.common.callbacks import (
 )
 from wandb.integration.sb3 import WandbCallback
 from omegaconf import DictConfig
-import wandb
 from stable_baselines3.common.callbacks import BaseCallback
 
 class TensorboardCallback(BaseCallback):
@@ -48,8 +47,8 @@ class TensorboardCallback(BaseCallback):
         # dt_step_target += 1
         info = self.locals.get('info')
         if info is not None:
-            frac_burned = info[0]['burnt_trees'] / ((wandb.config["world_size"] - 2) ** 2)
-            frac_unburned = info[0]['unburnt_trees'] / ((wandb.config["world_size"] - 2) ** 2)
+            frac_burned = info[0]['burnt_trees']
+            frac_unburned = info[0]['unburnt_trees']
             self.logger.record('train/burnt trees', frac_burned)
             self.logger.record('train/unburnt trees', frac_unburned)
         return True
@@ -85,7 +84,9 @@ def setup_callbacks(eval_env, config:DictConfig):
         eval_freq=5000,
         verbose=2,
     )
-    log_callback = WandbCallback(
+    callbacks = [checkpoint_callback, eval_callback, tensorboard_callback]
+    if config['wandb']['enabled']:
+        callbacks.append(WandbCallback(
         model_save_freq=10000, model_save_path=f"{config['model_save_path']}"
-    )
-    return [checkpoint_callback, eval_callback, tensorboard_callback, log_callback]
+    ))
+    return callbacks

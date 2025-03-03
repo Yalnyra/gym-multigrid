@@ -1,0 +1,5 @@
+# @package _global_
+env:
+  agents: 2
+  flashpoints: 1
+  world_size: 3

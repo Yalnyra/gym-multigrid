@@ -1,0 +1,6 @@
+# @package _global_
+
+env:
+  reward_type: fire_adjacent, 
+    agent_adjacent, 
+    agent_healthy_adjacent

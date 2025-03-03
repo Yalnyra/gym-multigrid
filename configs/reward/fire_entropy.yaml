@@ -1,0 +1,4 @@
+# @package _global_
+
+env:
+  reward_type: fire_entropy

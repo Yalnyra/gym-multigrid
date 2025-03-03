@@ -1,0 +1,3 @@
+# @package _global_
+env:
+  world_size: 21

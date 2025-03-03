@@ -1,0 +1,5 @@
+defaults:
+  - algorithm: ppo
+
+init_hp:
+  ++use_sde: True 

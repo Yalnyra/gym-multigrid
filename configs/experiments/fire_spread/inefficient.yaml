@@ -1,0 +1,4 @@
+# @package _global_
+env:
+  beta_transition: 0.6
+  agent_beta_impact: 0.3

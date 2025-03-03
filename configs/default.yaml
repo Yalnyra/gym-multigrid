@@ -1,10 +1,17 @@
 defaults:
   - _self_
   - algorithm: matd3
+  - reward: default
+  # - sweeps: wandb
+  #   optional: True
+  - experiments/env_size: default
+
+  - experiments/team_size: default
+
   # - override hydra/job_logging: file
   # - override hydra/launcher: submitit_local
-  # - hydra/sweeper: wandb
-  
+  # - override hydra/sweeper: wandb
+
 wandb: 
   enabled: False
   project: Wildfire
@@ -31,7 +38,8 @@ training_type: ???
 from_scratch: True
 job_type: train
 model_save_path: out/models/${run_id}
-train_epochs: 100000
+log: out/logs/wildfire/
+train_epochs: 100_000
 memory_size: 100_000  # Max memory buffer size
 valid_interval: 10000 # Valid frequency during train
 episodes: 25

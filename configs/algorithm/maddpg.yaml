@@ -1,7 +1,17 @@
-defaults:
-  - matd3
-
+# @package _global_
 name: maddpg
 
 algorithm:
   _target_: __main__.model_MADDPG
+
+init_hp:  
+  O_U_noise: True  # Ornstein Uhlenbeck action noise
+  expl_noise: 0.3  # Action noise scale
+  mean_noise: 0.0  # Mean action noise
+  theta: 0.15  # Rate of mean reversion in OU noise
+  dt: 0.01  # Timestep for OU noise
+  lr_actor: 0.001  # Actor learning rate
+  lr_critic: 0.001  # Critic learning rate
+  gamma: 0.99  # Discount factor
+  tau: 0.01  # For soft update of target parameters
+  learn_step: 5  # Learning frequency

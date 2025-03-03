@@ -1,0 +1,4 @@
+
+init_hp:
+  OU_Noise: 0.3
+  explained_variance: 0.3

@@ -1,0 +1,2 @@
+# @package _global_
+train_epochs: 50_000

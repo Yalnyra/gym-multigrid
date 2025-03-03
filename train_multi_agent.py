@@ -12,6 +12,8 @@ from tqdm import trange
 from agilerl.components.replay_data import ReplayDataset
 from agilerl.components.sampler import Sampler
 
+from omegaconf import DictConfig
+import wandb.wandb_run
 
 def train_multi_agent(
     env,
@@ -146,30 +148,31 @@ def train_multi_agent(
         if net_config is not None:
             config_dict.update(net_config)
 
-        if accelerator is not None:
-            accelerator.wait_for_everyone()
-            if accelerator.is_main_process:
-                wandb.init(
-                    # set the wandb project where this run will be logged
-                    project="Wildfire",
-                    name="{}-MAEvoHPO-{}-{}".format(
-                        env_name, algo, datetime.now().strftime("%m%d%Y%H%M%S")
-                    ),
-                    # track hyperparameters and run metadata
-                    config=config_dict,
-                )
-            accelerator.wait_for_everyone()
-        else:
-            wandb.init(
-                # set the wandb project where this run will be logged
-                project="Wildfire",
-                name="{}-MAEvoHPO-{}-{}".format(
-                    env_name, algo, datetime.now().strftime("%m%d%Y%H%M%S")
-                ),
-                # track hyperparameters and run metadata
-                config=config_dict,
+        # if accelerator is not None:
+        #     accelerator.wait_for_everyone()
+        #     if accelerator.is_main_process:
+        #         wandb.init(
+        #             # set the wandb project where this run will be logged
+        #             project="Wildfire",
+        #             name="{}-MAEvoHPO-{}-{}".format(
+        #                 env_name, algo, datetime.now().strftime("%m%d%Y%H%M%S")
+        #             ),
+        #             # track hyperparameters and run metadata
+        #             config=config_dict,
+        #         )
+        #     accelerator.wait_for_everyone()
+        # else:
+        #     wandb.init(
+        #         # set the wandb project where this run will be logged
+        #         project="Wildfire",
+        #         name="{}-MAEvoHPO-{}-{}".format(
+        #             env_name, algo, datetime.now().strftime("%m%d%Y%H%M%S")
+        #         ),
+        #         sync_tensorboard=True,
+        #         # track hyperparameters and run metadata
+        #         config=config_dict,
                 
-            )
+        #     )
     if accelerator is not None:
         accel_temp_models_path = f"models/{env_name}"
         if accelerator.is_main_process:
@@ -290,7 +293,15 @@ def train_multi_agent(
                     if sum_scores
                     else np.array(list(reward.values())).transpose()
                 )
-
+                mean_reward = np.mean(list(reward.values()))
+                frac_burned = info[0]['burnt trees']
+                frac_unburned = info[0]['unburnt trees']
+                if wb:
+                    wandb.log({
+                            "reward": mean_reward,
+                            "burnt trees": frac_burned,
+                            "unburnt trees": frac_unburned
+                            })
                 scores += score_increment
                 total_steps += num_envs
                 steps += num_envs
@@ -648,14 +659,14 @@ def train_multi_agent(
                     print("Saved checkpoint.")
                 checkpoint_count += 1
 
-    if wb:
-        if accelerator is not None:
-            accelerator.wait_for_everyone()
-            if accelerator.is_main_process:
-                wandb.finish()
-            accelerator.wait_for_everyone()
-        else:
-            wandb.finish()
+    # if wb:
+    #     if accelerator is not None:
+    #         accelerator.wait_for_everyone()
+    #         if accelerator.is_main_process:
+    #             wandb.finish()
+    #         accelerator.wait_for_everyone()
+    #     else:
+    #         wandb.finish()
 
     pbar.close()
     return pop, pop_fitnesses

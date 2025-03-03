@@ -1,0 +1,4 @@
+# @package _global_
+env:
+  flashpoints: 1
+  world_size: 7

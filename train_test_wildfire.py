@@ -13,7 +13,6 @@ import wandb
 
 # AgileRL HPO & algorithms
 from agilerl.algorithms import maddpg, matd3
-from agilerl.training import train_multi_agent
 from train_multi_agent import train_multi_agent
 from agilerl.components.multi_agent_replay_buffer import MultiAgentReplayBuffer
 # from agilerl.hpo.mutation import Mutations
@@ -127,10 +126,13 @@ def train_sb3(model, callbacks, config:DictConfig):
         callback=callbacks,
         progress_bar=True,
     )
-    model.save(f"{config['model_save_path']}")
+    model_suffix = f"_0_{config['train_epochs']}"
+    path = f"{config['model_save_path']}{model_suffix}"
+    model.save(path)
 
 
 def load_model(model_path: str, name:str, env=None):
+    print(f"Attempting to load{name} from path:{model_path}")
     # does it need env?
     define = None
     match name:
@@ -144,7 +146,11 @@ def load_model(model_path: str, name:str, env=None):
             raise KeyError(name)
     if define is None:
         raise ImportError(f"Could not import class definition of algorithm: {name}")
-    return define.load(model_path, env=env)
+    
+    if env is not None:
+        return define.load(model_path, env=env)
+    
+    return define.load(model_path)
 
 
 def test_model(env, config:DictConfig, model=None):
@@ -179,8 +185,8 @@ def test_model(env, config:DictConfig, model=None):
             frames.append(env.render())
             mean_reward_per_agent = np.mean(list(reward.values()))
             ep_reward += float(mean_reward_per_agent)
-            frac_burned = infos[0]['burnt trees'] / ((config["world_size"] - 2) ** 2)
-            frac_unburned = infos[0]['unburnt trees'] / ((config["world_size"] - 2) ** 2)
+            frac_burned = infos[0]['burnt trees']
+            frac_unburned = infos[0]['unburnt trees']
             print(
                 f"Reward: {reward}, \n burnt trees %: {frac_burned}, \n terminated: {terminated}, truncated: {truncated}, Frames length: {len(frames)}"
                 # , Inference time in ms: {inference_dt}"
@@ -204,9 +210,9 @@ def test_model(env, config:DictConfig, model=None):
                     "total_episode_reward": ep_reward,
                 }
         )
-    save_frames_as_gif(frames=frames, path=config['tensorboard'], filename=f"{config['run_id']}-{config['job_type']}", ep=config['train_epochs'], fps=5)
+    save_frames_as_gif(frames=frames, path=config['log'], filename=f"{config['run_id']}-{config['job_type']}", ep=config['train_epochs'], fps=5)
     if config['wandb']['enabled']:
-        wandb.log({"video": wandb.Video(f"{config['tensorboard']}/{config['run_id']}-{config['job_type']}-{config['train_epochs']}.gif", format="gif")})
+        wandb.log({"video": wandb.Video(f"{config['log']}/{config['run_id']}-{config['job_type']}-{config['train_epochs']}.gif", format="gif")})
         
 
 
@@ -262,12 +268,13 @@ def train(config: DictConfig):
                 # net_config=config['encoder_config'],  # Network configuration
                 max_steps=config['train_epochs'],  # Max number of training steps
                 evo_steps=10000,  # Evolution frequency
-                eval_steps=500,  # Number of steps in evaluation episode
+                eval_steps=100,  # Number of steps in evaluation episode
                 eval_loop=config['train_epochs'] // config['valid_interval'],  # Number of evaluation episodes
                 learning_delay=1000,  # Steps before starting learning
                 target=200.,  # Target score for early stopping
                 checkpoint=config['valid_interval'],
                 checkpoint_path=config['model_save_path'],
+                sum_scores=True,
                 wb=config['wandb']['enabled'],  # Weights and Biases tracking
             )
             plt.figure()
@@ -287,8 +294,9 @@ def test(config:DictConfig):
     test_env = create_env(config['env'], render_mode="rgb_array", inference=True)
     # Load the trained model from model_class constructor
     model=None
+    ext = '.zip' if config['training_type'] == 'sb3' else '.pt'
     if config['name'] in ['ppo', 'matd3', 'maddpg']:
-        model_suffix = f"_0_{config['train_epochs']}.pt"
+        model_suffix = f"_0_{config['train_epochs']}{ext}"
         path = f"{config['model_save_path']}{model_suffix}"
         model = load_model(path, config['name'])
         if config['wandb']['enabled']:
@@ -337,6 +345,7 @@ def main(cfg: DictConfig):
         sync_tensorboard=True,
         job_type=cfg['job_type'],
         resume="allow",
+        reinit=True,
         # python -c "import wandb; print(wandb.util.generate_id())"
         # id="8up8c0w8",
         )

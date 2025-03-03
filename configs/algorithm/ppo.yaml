@@ -14,7 +14,7 @@ init_hp:
   gae_lambda: 0.95
   clip_range: 0.4
   ent_coef: 0.6
-  tensorboard_log: out/logs/wildfire/
+  tensorboard_log: ${log}
 
 encoder_config:
   arch: mlp

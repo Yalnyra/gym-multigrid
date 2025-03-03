@@ -1,0 +1,5 @@
+# @package _global_
+
+env:
+  cooperative_reward: True
+  reward_type: choose(islands_size, "agent_above", "islands_size", "fire_islands_size", "fire_entropy", "fire_adjacent", "agent_adjacent", "agent_healthy_adjacent")
