@@ -1,0 +1,7 @@
+defaults:
+  - matd3
+
+name: maddpg
+
+algorithm:
+  _target_: __main__.model_MADDPG

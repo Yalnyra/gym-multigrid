@@ -262,7 +262,7 @@ def train_multi_agent(
                 # Get next action from agent
                 # print("Single obs space: ", state[0].shape)
                 cont_actions, discrete_action = agent.get_action(
-                    states=state, training=True, infos=info
+                    obs=state, training=True, infos=info
                 )
                 if agent.discrete_actions:
                     action = discrete_action
@@ -304,7 +304,7 @@ def train_multi_agent(
                         agent_id: np.moveaxis(ns, [-1], [-3])
                         for agent_id, ns in next_state.items()
                     }
-
+                # print(f"State/Action/Reward shapes:\n", state[0].shape, action[0].shape, reward[0].shape, next_state[0].shape)
                 memory.save_to_memory(
                     state,
                     cont_actions,
@@ -328,7 +328,7 @@ def train_multi_agent(
                         # Learn according to agent's RL algorithm
                         loss = agent.learn(experiences)
                         for agent_id in agent_ids:
-                            losses[agent_id].append(loss[agent_id])
+                            losses[agent_id].append(loss[f"{agent_id}"])
 
                 # Handle num_envs > learn step; learn multiple times per step in env
                 elif (
@@ -340,7 +340,7 @@ def train_multi_agent(
                         # Learn according to agent's RL algorithm
                         loss = agent.learn(experiences)
                         for agent_id in agent_ids:
-                            losses[agent_id].append(loss[agent_id])
+                            losses[agent_id].append(loss[f"{agent_id}"])
 
                 # Update the state
                 if swap_channels and not is_vectorised:

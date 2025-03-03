@@ -1,0 +1,21 @@
+# @package _global_
+algorithm:
+  _target_: algorithm.sb3.model_PPO
+name: ppo
+
+training_type: sb3
+
+init_hp:
+  n_steps: 2048
+  n_epochs: 10
+  batch_size: 128
+  learning_rate: 1e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.4
+  ent_coef: 0.6
+  tensorboard_log: out/logs/wildfire/
+
+encoder_config:
+  arch: mlp
+  hidden_size: [32, 32]  # Actor hidden size
