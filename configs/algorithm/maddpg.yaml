@@ -2,7 +2,7 @@
 name: maddpg
 
 algorithm:
-  _target_: __main__.model_MADDPG
+  _target_: algorithm.agilerl.model_MADDPG
 
 training_type: agile_rl
 init_hp:  

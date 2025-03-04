@@ -90,3 +90,15 @@ def setup_callbacks(eval_env, config:DictConfig):
         model_save_freq=10000, model_save_path=f"{config['model_save_path']}"
     ))
     return callbacks
+
+def train_sb3(model, eval_env, config:DictConfig):
+
+    model.learn(
+        total_timesteps=config['train_epochs'],
+        tb_log_name=f"{config['run_id']}",
+        callback=setup_callbacks(eval_env, config),
+        progress_bar=True,
+    )
+    model_suffix = f"_0_{config['train_epochs']}"
+    path = f"{config['model_save_path']}{model_suffix}"
+    model.save(path)

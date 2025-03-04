@@ -12,7 +12,6 @@ from omegaconf.errors import ConfigKeyError
 import wandb
 
 # AgileRL HPO & algorithms
-from agilerl.algorithms import maddpg, matd3
 from train_multi_agent import train_multi_agent
 from agilerl.components.multi_agent_replay_buffer import MultiAgentReplayBuffer
 # from agilerl.hpo.mutation import Mutations
@@ -20,7 +19,7 @@ from agilerl.components.multi_agent_replay_buffer import MultiAgentReplayBuffer
 # from agilerl.utils.utils import create_population
 
 # Async Env parameter sharing
-from agilerl.vector.pz_async_vec_env import AsyncPettingZooVecEnv
+# from agilerl.vector.pz_async_vec_env import AsyncPettingZooVecEnv
 from supersuit import pettingzoo_env_to_vec_env_v1, concat_vec_envs_v1
 
 
@@ -68,67 +67,6 @@ def wrap_env(env, config:DictConfig):
             # env = AsyncPettingZooVecEnv([lambda:env])
             pass
     return env
-
-
-def model_MADDPG(env: AsyncPettingZooVecEnv, config:DictConfig):
-    nn_t = None
-    try:
-        nn_t = {"encoder_config": config['encoder_config']}
-        print(f"Loaded encoder: {nn_t}")
-    except(ConfigKeyError):
-        print("Couldn't load encoder")
-        pass
-    observation_spaces = [env.observation_space(agent) for agent in env.agents]
-    action_spaces = [env.action_space(agent) for agent in env.agents]
-    # max_action = [space.n for space in action_spaces]
-    # min_action = [space.start for space in action_spaces]
-    return maddpg.MADDPG(
-        observation_spaces,
-        action_spaces,
-        env.agents,
-        net_config=nn_t,
-        device=config['device'],
-        **config['init_hp'],
-    )
-
-# TODO: add passing agents & critics networks on inference
-def model_MATD3(env: AsyncPettingZooVecEnv, config:DictConfig):
-    nn_t = None
-    try:
-        nn_t = {"encoder_config": config['encoder_config']}
-        print(f"Loaded encoder: {nn_t}")
-    except(ConfigKeyError):
-        print("Couldn't load encoder")
-        pass
-    observation_spaces = [env.observation_space(agent) for agent in env.agents]
-    action_spaces = [env.action_space(agent) for agent in env.agents]
-    # max_action = [space.n for space in action_spaces]
-    # min_action = [space.start for space in action_spaces]
-
-    # return AgileRL policy
-    return matd3.MATD3(
-        observation_spaces,
-        action_spaces,
-        env.agents,
-        net_config=nn_t,
-        
-        device=config['device'],
-        **config['init_hp'],
-    )
-
-
-
-
-def train_sb3(model, callbacks, config:DictConfig):
-    model.learn(
-        total_timesteps=config['train_epochs'],
-        tb_log_name=f"{config['run_id']}",
-        callback=callbacks,
-        progress_bar=True,
-    )
-    model_suffix = f"_0_{config['train_epochs']}"
-    path = f"{config['model_save_path']}{model_suffix}"
-    model.save(path)
 
 
 def load_model(model_path: str, name:str, env=None):
@@ -240,13 +178,13 @@ def train(config: DictConfig):
     # Train the model
     match config['training_type']:
         case 'sb3':
-            callbacks = hydra.utils.call(
-                config['sb3_callbacks'],
+            hydra.utils.call(
+                config['sb3'],
                 eval_env, 
+                model,
                 config,
                 _recursive_=False
                 )
-            train_sb3(model, callbacks, config=config)
         case 'agile_rl':
             # Initialise separate copies of the agent policy algorithm
             pop = [deepcopy(model) for _ in range(config['env']['agents'])]
@@ -339,6 +277,10 @@ def main(cfg: DictConfig):
         cfg, resolve=True, throw_on_missing=True #noqa
     )
 
+    print("whole config:", OmegaConf.to_container(
+        cfg, resolve=True, throw_on_missing=True
+    ))
+    # exit()
     if cfg['wandb']['enabled']:
         wandb.init(
         project=cfg['wandb']['project'],
@@ -351,9 +293,6 @@ def main(cfg: DictConfig):
         # id="8up8c0w8",
         )
 
-    print("whole config:", OmegaConf.to_container(
-        cfg, resolve=True, throw_on_missing=True
-    ))
 
     if cfg['job_type'] == "train":
         train(cfg)

@@ -2,7 +2,7 @@ defaults:
   - _self_
   - algorithm: matd3
   - reward: default
-  - sweeper: wandb
+  # - sweeper: wandb
   #   optional: True
   - experiments/env_size: default
 
@@ -10,14 +10,30 @@ defaults:
 
   # - override hydra/job_logging: file
   # - override hydra/launcher: submitit_local
+  - override hydra/launcher: joblib
   # - override hydra/sweeper: wandb
+
+
+hydra:
+  run:
+    dir: ${model_save_path}
+  launcher:
+    # timeout_min: 2880
+    timeout: 2880
+    # cpus_per_task: 1
+    # mem_gb: 8
+    n_jobs: -1
+    pre_dispatch: 2*n_jobs
+
+  job:
+    chdir: True
 
 wandb: 
   enabled: False
   project: Wildfire
 device: "cpu"
 
-sb3_callbacks:
+sb3:
   _target_: algorithm.sb3.setup_callbacks
 
 env:
@@ -33,7 +49,7 @@ env:
   partial_obs: False
   cooperative_reward: True
 
-run_id: ${name}_${env.agents}_${env.world_size}
+run_id: ${name}_${env.agents}_${env.world_size}_${env.reward_type}
 training_type: ???
 from_scratch: True
 job_type: train

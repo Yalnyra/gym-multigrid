@@ -4,7 +4,7 @@ defaults:
 
 name: matd3
 algorithm:
-  _target_: __main__.model_MATD3
+  _target_: algorithm.agilerl.model_MATD3
 init_hp:
  # "POPULATION_SIZE": 5,
   batch_size: 32 # Batch size
