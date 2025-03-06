@@ -70,16 +70,20 @@ def wrap_env(env, config:DictConfig):
 
 
 def load_model(model_path: str, name:str, env=None):
-    print(f"Attempting to load{name} from path:{model_path}")
+    print(f"Attempting to load {name} from path: {model_path}")
     # does it need env?
+    # model_path = os.path.abspath(model_path)
+    print("Current dir: ", os.path.abspath(os.curdir))
     define = None
     match name:
         case 'ppo':
             define = hydra.utils.get_class('sbx.PPO')
         case 'matd3':
             define = hydra.utils.get_class('agilerl.algorithms.matd3.MATD3')
+            model_path += '.pt'
         case 'maddpg':
             define = hydra.utils.get_class('agilerl.algorithms.maddpg.MADDPG')
+            model_path += '.pt'
         case _:
             raise KeyError(name)
     if define is None:
@@ -135,9 +139,9 @@ def test_model(env, config:DictConfig, model=None):
             # Log reward at each step to wandb
                 wandb.log(
                     {
-                        "reward": mean_reward_per_agent,
-                        "burnt trees": frac_burned,
-                        "unburnt trees": frac_unburned,
+                        "eval/reward": mean_reward_per_agent,
+                        "eval/burnt trees": frac_burned,
+                        "eval/unburnt trees": frac_unburned,
                         "Inference FPS": inference_dt,
                     }
                 )
@@ -145,7 +149,7 @@ def test_model(env, config:DictConfig, model=None):
         # Total episode reward
             wandb.log(
                 {
-                    "total_episode_reward": ep_reward,
+                    "eval/mean_reward": ep_reward,
                 }
         )
     save_frames_as_gif(frames=frames, path=config['log'], filename=f"{config['run_id']}-{config['job_type']}", ep=config['train_epochs'], fps=5)
@@ -157,6 +161,11 @@ def test_model(env, config:DictConfig, model=None):
 def train(config: DictConfig):
     # Create and wrap the training environment
     model_path = f"{config['model_save_path']}/{config['run_id']}"
+    # Save configuration for eval purposes
+    os.makedirs(model_path)
+    with open(model_path + "/config.yaml", "w") as f:
+        OmegaConf.save(config, f)
+    
     train_env = create_env(config['env'], render_mode=None, inference=False)
     print("Original observation space shape:", train_env.observation_space().shape)
     train_env = wrap_env(train_env, config)
@@ -171,8 +180,9 @@ def train(config: DictConfig):
         config,
         _recursive_=False)
     if not config["from_scratch"]:
-        model = load_model(model_path, train_env, config['algorithm']['name'])
-    
+        model = load_model(model_path, train_env, config['name'])
+        # if config['wandb']['enabled']:
+
     train_env.reset()
 
     # Train the model
@@ -180,8 +190,8 @@ def train(config: DictConfig):
         case 'sb3':
             hydra.utils.call(
                 config['sb3'],
-                eval_env, 
-                model,
+                model, 
+                eval_env,
                 config,
                 _recursive_=False
                 )
@@ -205,15 +215,18 @@ def train(config: DictConfig):
                 INIT_HP=config['init_hp'],  # IINIT_HP dictionary
                 # net_config=config['encoder_config'],  # Network configuration
                 max_steps=config['train_epochs'],  # Max number of training steps
-                evo_steps=10000,  # Evolution frequency
+                # evo_steps=10000,  # Evolution frequency
                 eval_steps=100,  # Number of steps in evaluation episode
-                eval_loop=config['train_epochs'] // config['valid_interval'],  # Number of evaluation episodes
+                eval_loop = config['episodes'],
                 learning_delay=1000,  # Steps before starting learning
-                target=200.,  # Target score for early stopping
+                target=0.,  # Target score for early stopping
                 checkpoint=config['valid_interval'],
-                checkpoint_path=config['model_save_path'],
+                checkpoint_path=config['run_id'],
+                overwrite_checkpoints=True,
+                # checkpoint_path=config['model_save_path'],
                 sum_scores=True,
                 wb=config['wandb']['enabled'],  # Weights and Biases tracking
+                config=config
             )
             plt.figure()
             plt.plot(pop_fitnesses)
@@ -223,7 +236,7 @@ def train(config: DictConfig):
             plt.show()
             last_fitness = pop_fitnesses[-1]
             elite_idx = last_fitness.index(max(last_fitness))
-            suffix = f'_{elite_idx}_{config["train_epochs"]}.pt'
+            suffix = f'{config["run_id"]}_0_{config["train_epochs"]}.pt'
             best_model = trained_pop[int(elite_idx)]
             best_model.save_checkpoint(f"{config['model_save_path']}{suffix}")
     eval_env.close()
@@ -235,11 +248,11 @@ def test(config:DictConfig):
     model=None
     ext = '.zip' if config['training_type'] == 'sb3' else '.pt'
     if config['name'] in ['ppo', 'matd3', 'maddpg']:
-        model_suffix = f"_0_{config['train_epochs']}{ext}"
-        path = f"{config['model_save_path']}{model_suffix}"
+        path = "{}{}_0_{}".format(config['model_save_path'],config['run_id'],config['train_epochs'])
         model = load_model(path, config['name'])
-        if config['wandb']['enabled']:
-            wandb.log_model(path=path,name=f"{config['run_id']}{model_suffix}")
+        # if config['wandb']['enabled']:
+        #     wandb.log_model(path=f"{config['run_id']}_0_{config['train_epochs']}.{ext}",
+        #                     name=f"{config['run_id']}_0_{config['train_epochs']}")
 
     # Test the trained model
     test_model(test_env, config, model=model)
@@ -289,6 +302,7 @@ def main(cfg: DictConfig):
         job_type=cfg['job_type'],
         resume="allow",
         reinit=True,
+        monitor_gym=True,
         # python -c "import wandb; print(wandb.util.generate_id())"
         # id="8up8c0w8",
         )

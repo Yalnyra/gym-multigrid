@@ -1,2 +1,0 @@
-[2025-02-24 14:25:06,402][matplotlib.animation][INFO] - Animation.save using <class 'matplotlib.animation.FFMpegWriter'>
-[2025-02-24 14:25:06,418][matplotlib.animation][INFO] - MovieWriter._run: running command: ffmpeg -f rawvideo -vcodec rawvideo -s 224x224 -pix_fmt rgba -framerate 5 -loglevel error -i pipe: -filter_complex 'split [a][b];[a] palettegen [p];[b][p] paletteuse' -y out/logs/wildfire/matd3_5_7-test-100000.gif

@@ -12,7 +12,7 @@ from tqdm import trange
 from agilerl.components.replay_data import ReplayDataset
 from agilerl.components.sampler import Sampler
 
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 import wandb.wandb_run
 
 def train_multi_agent(
@@ -26,7 +26,7 @@ def train_multi_agent(
     MUT_P=None,
     net_config=None,
     swap_channels=False,
-    max_steps=50000,
+    max_steps=500000,
     evo_steps=25,
     eval_steps=None,
     eval_loop=1,
@@ -43,6 +43,7 @@ def train_multi_agent(
     verbose=True,
     accelerator=None,
     wandb_api_key=None,
+    config=None,
 ):
     """The general online multi-agent RL training function. Returns trained population of agents
     and their fitnesses.
@@ -141,6 +142,10 @@ def train_multi_agent(
                 warnings.warn("Must login to wandb with API key.")
 
         config_dict = {}
+        if config is not None:
+            config_dict = OmegaConf.to_container(
+                config, resolve=True, throw_on_missing=True #noqa
+            )
         if INIT_HP is not None:
             config_dict.update(INIT_HP)
         if MUT_P is not None:
@@ -148,31 +153,31 @@ def train_multi_agent(
         if net_config is not None:
             config_dict.update(net_config)
 
-        # if accelerator is not None:
-        #     accelerator.wait_for_everyone()
-        #     if accelerator.is_main_process:
-        #         wandb.init(
-        #             # set the wandb project where this run will be logged
-        #             project="Wildfire",
-        #             name="{}-MAEvoHPO-{}-{}".format(
-        #                 env_name, algo, datetime.now().strftime("%m%d%Y%H%M%S")
-        #             ),
-        #             # track hyperparameters and run metadata
-        #             config=config_dict,
-        #         )
-        #     accelerator.wait_for_everyone()
-        # else:
-        #     wandb.init(
-        #         # set the wandb project where this run will be logged
-        #         project="Wildfire",
-        #         name="{}-MAEvoHPO-{}-{}".format(
-        #             env_name, algo, datetime.now().strftime("%m%d%Y%H%M%S")
-        #         ),
-        #         sync_tensorboard=True,
-        #         # track hyperparameters and run metadata
-        #         config=config_dict,
-                
-        #     )
+        if accelerator is not None:
+            accelerator.wait_for_everyone()
+            if accelerator.is_main_process:
+                wandb.init(
+        project=config['wandb']['project'],
+        config=config_dict,
+        name=config["run_id"],
+        sync_tensorboard=True,
+        job_type=config['job_type'],
+        resume="allow",
+        reinit=True,
+        monitor_gym=True,
+        )
+            accelerator.wait_for_everyone()
+        else:
+            wandb.init(
+        project=config['wandb']['project'],
+        config=config_dict,
+        name=config["run_id"],
+        sync_tensorboard=True,
+        job_type=config['job_type'],
+        resume="allow",
+        reinit=True,
+        monitor_gym=True,
+        )
     if accelerator is not None:
         accel_temp_models_path = f"models/{env_name}"
         if accelerator.is_main_process:
@@ -296,15 +301,15 @@ def train_multi_agent(
                 mean_reward = np.mean(list(reward.values()))
                 frac_burned = info[0]['burnt trees']
                 frac_unburned = info[0]['unburnt trees']
-                if wb:
-                    wandb.log({
-                            "reward": mean_reward,
-                            "burnt trees": frac_burned,
-                            "unburnt trees": frac_unburned
-                            })
                 scores += score_increment
                 total_steps += num_envs
                 steps += num_envs
+                if wb:
+                    wandb.log({
+                            "train/reward": mean_reward,
+                            "train/burnt trees": frac_burned,
+                            "train/unburnt trees": frac_unburned
+                            }, step=total_steps)
                 # Save experience to replay buffer
                 if swap_channels:
                     if not is_vectorised:
@@ -423,7 +428,7 @@ def train_multi_agent(
                 for episode_scores in pop_episode_scores
             ]
             mean_score_dict = {
-                "train/mean_score": np.mean(
+                "train/reward": np.mean(
                     [
                         mean_score
                         for mean_score in mean_scores
@@ -444,12 +449,12 @@ def train_multi_agent(
             if pop_episode_scores:
                 mean_scores = np.stack(pop_mean_scores, axis=0)
                 mean_score_dict = {
-                    "train/mean_score/" + agent: np.mean(mean_scores[:, idx], axis=-1)
+                    "train/reward/" + agent: np.mean(mean_scores[:, idx], axis=-1)
                     for idx, agent in enumerate(agent_ids)
                 }
             else:
                 mean_score_dict = {
-                    "train/mean_score/" + agent: np.nan
+                    "train/reward/" + agent: np.nan
                     for idx, agent in enumerate(agent_ids)
                 }
             mean_fitnesses = np.mean(fitnesses, axis=0)
@@ -466,7 +471,7 @@ def train_multi_agent(
 
         if wb:
             wandb_dict = {
-                "global_step": (
+                "step": (
                     total_steps * accelerator.state.num_processes
                     if accelerator is not None and accelerator.is_main_process
                     else total_steps
@@ -494,6 +499,7 @@ def train_multi_agent(
                             f"train/agent_{agent_idx}_{agent_id}_critic_loss"
                         ] = np.mean(critic_loss[-10:])
                         wandb_dict.update(critic_loss_dict)
+                    
 
             if accelerator is not None:
                 accelerator.wait_for_everyone()
@@ -501,7 +507,7 @@ def train_multi_agent(
                     wandb.log(wandb_dict)
                 accelerator.wait_for_everyone()
             else:
-                wandb.log(wandb_dict)
+                wandb.log(wandb_dict, step=wandb_dict['step'])
 
             for idx, agent in enumerate(pop):
                 wandb.log(
@@ -540,14 +546,15 @@ def train_multi_agent(
                     elite, pop = tournament.select(pop)
                     pop = mutation.mutation(pop)
                     for pop_i, model in enumerate(pop):
+                        
                         model.save_checkpoint(
-                            f"{accel_temp_models_path}/{algo}_{pop_i}.pt"
+                            f"{config['model_save_path']}{config['run_id']}_{pop_i}_{config['train_epochs']}.pt"
                         )
                 accelerator.wait_for_everyone()
                 if not accelerator.is_main_process:
                     for pop_i, model in enumerate(pop):
                         model.load_checkpoint(
-                            f"{accel_temp_models_path}/{algo}_{pop_i}.pt"
+                            f"{config['model_save_path']}{config['run_id']}_{pop_i}_{config['train_epochs']}.pt"
                         )
                 accelerator.wait_for_everyone()
                 for model in pop:
@@ -558,11 +565,9 @@ def train_multi_agent(
 
             if save_elite:
                 elite_save_path = (
-                    elite_path.split(".pt")[0]
-                    if elite_path is not None
-                    else f"{env_name}-elite_{algo}"
+                    f"{config['model_save_path']}{config['run_id']}_elite_{config['train_epochs']}.pt"
                 )
-                elite.save_checkpoint(f"{elite_save_path}.pt")
+                elite.save_checkpoint(elite_save_path)
 
         if verbose:
             if sum_scores:
@@ -643,7 +648,7 @@ def train_multi_agent(
                                 else f"{save_path}_{i}_{agent.steps[-1]}.pt"
                             )
                             agent.save_checkpoint(current_checkpoint_path)
-                        print("Saved checkpoint.")
+                        print("Saved checkpoint. at:", save_path)
                     accelerator.wait_for_everyone()
                     for model in pop:
                         model.wrap_models()
@@ -656,7 +661,7 @@ def train_multi_agent(
                             else f"{save_path}_{i}_{agent.steps[-1]}.pt"
                         )
                         agent.save_checkpoint(current_checkpoint_path)
-                    print("Saved checkpoint.")
+                    print("Saved checkpoint. at:", save_path)
                 checkpoint_count += 1
 
     # if wb:

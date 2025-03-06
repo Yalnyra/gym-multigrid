@@ -7,7 +7,7 @@ defaults:
   - experiments/env_size: default
 
   - experiments/team_size: default
-
+  - experiments/fire_spread: default
   # - override hydra/job_logging: file
   # - override hydra/launcher: submitit_local
   - override hydra/launcher: joblib
@@ -16,10 +16,13 @@ defaults:
 
 hydra:
   run:
-    dir: ${model_save_path}
+    dir: /python_course/gym-multigrid/
+  sweep:
+    dir: /python_course/gym-multigrid/
+    subdir: ''
   launcher:
     # timeout_min: 2880
-    timeout: 2880
+    # timeout: 2880
     # cpus_per_task: 1
     # mem_gb: 8
     n_jobs: -1
@@ -34,7 +37,7 @@ wandb:
 device: "cpu"
 
 sb3:
-  _target_: algorithm.sb3.setup_callbacks
+  _target_: algorithm.sb3.train
 
 env:
   agents: 5
@@ -49,13 +52,13 @@ env:
   partial_obs: False
   cooperative_reward: True
 
-run_id: ${name}_${env.agents}_${env.world_size}_${env.reward_type}
+run_id: ${name}_${env.agents}_${env.world_size}_${env.reward_type}_${now:%Y-%m-%d}/${now:%H-%M-%S}
 training_type: ???
 from_scratch: True
 job_type: train
-model_save_path: out/models/${run_id}
-log: out/logs/wildfire/
+model_save_path: out/models/
+log: out/logs/
 train_epochs: 100_000
-memory_size: 100_000  # Max memory buffer size
+memory_size: 10_000  # Max memory buffer size
 valid_interval: 10000 # Valid frequency during train
 episodes: 25

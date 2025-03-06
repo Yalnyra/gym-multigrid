@@ -1,11 +1,22 @@
 hydra:
   run:
-    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: /python_course/gym-multigrid/
   sweep:
-    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
-    subdir: ${hydra.job.num}
+    dir: /python_course/gym-multigrid/
+    subdir: ''
   launcher:
-    _target_: hydra._internal.core_plugins.basic_launcher.BasicLauncher
+    _target_: hydra_plugins.hydra_joblib_launcher.joblib_launcher.JoblibLauncher
+    n_jobs: -1
+    backend: null
+    prefer: processes
+    require: null
+    verbose: 0
+    timeout: null
+    pre_dispatch: 2*n_jobs
+    batch_size: auto
+    temp_folder: null
+    max_nbytes: null
+    mmap_mode: r
   sweeper:
     _target_: hydra._internal.core_plugins.basic_sweeper.BasicSweeper
     max_batch_size: null
@@ -104,20 +115,26 @@ hydra:
       - file
     disable_existing_loggers: false
   env: {}
-  mode: RUN
+  mode: MULTIRUN
   searchpath: []
   callbacks: {}
   output_subdir: .hydra
   overrides:
     hydra:
-    - hydra.mode=RUN
-    task: []
+    - hydra.mode=MULTIRUN
+    task:
+    - algorithm=maddpg
+    - train_epochs=10000
+    - valid_interval=2000
+    - env.reward_type=fire_adjacent
+    - experiments/fire_spread=inefficient
+    - wandb.enabled=True
   job:
     name: train_test_wildfire
-    chdir: null
-    override_dirname: ''
-    id: ???
-    num: ???
+    chdir: true
+    override_dirname: algorithm=maddpg,env.reward_type=fire_adjacent,experiments/fire_spread=inefficient,train_epochs=10000,valid_interval=2000,wandb.enabled=True
+    id: train_test_wildfire_5
+    num: 5
     config_name: default
     env_set: {}
     env_copy: []
@@ -140,8 +157,13 @@ hydra:
     - path: ''
       schema: structured
       provider: schema
-    output_dir: D:\python_course\gym-multigrid\outputs\2025-02-24\14-37-24
+    output_dir: D:\python_course\gym-multigrid
     choices:
+      experiments/fire_spread: inefficient
+      experiments/team_size: default
+      experiments/env_size: default
+      reward: default
+      algorithm: maddpg
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: default
@@ -149,6 +171,6 @@ hydra:
       hydra/hydra_help: default
       hydra/help: default
       hydra/sweeper: basic
-      hydra/launcher: basic
+      hydra/launcher: joblib
       hydra/output: default
   verbose: false

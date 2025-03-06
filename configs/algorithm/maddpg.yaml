@@ -4,6 +4,8 @@ name: maddpg
 algorithm:
   _target_: algorithm.agilerl.model_MADDPG
 
+# model_save_path: out/models/${run_id}
+
 training_type: agile_rl
 init_hp:  
   O_U_noise: True  # Ornstein Uhlenbeck action noise
