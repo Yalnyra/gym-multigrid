@@ -23,10 +23,8 @@ hydra:
   launcher:
     # timeout_min: 2880
     # timeout: 2880
-    # cpus_per_task: 1
-    # mem_gb: 8
-    n_jobs: -1
-    pre_dispatch: 2*n_jobs
+    n_jobs: -3
+    pre_dispatch: n_jobs
 
   job:
     chdir: True
@@ -60,5 +58,5 @@ model_save_path: out/models/
 log: out/logs/
 train_epochs: 100_000
 memory_size: 10_000  # Max memory buffer size
-valid_interval: 10000 # Valid frequency during train
+valid_interval: 5000 # Valid frequency during train
 episodes: 25

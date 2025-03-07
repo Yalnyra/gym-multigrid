@@ -1054,7 +1054,8 @@ class WildfireEnv(MultiGridEnv):
         # check if episode is done
         if len(self.trees_on_fire) == 0:
             terminated = np.ones(len(self.agents))
-            rewards = {a: 0 for a in self.agents}
+            term_reward = self.burnt_trees / self.grid_size_without_walls ** 2
+            rewards = {a: -term_reward for a in self.agents}
             # self.agents = []
             # self.agents_storage = []
         elif self.step_count >= self.max_steps:
@@ -1078,7 +1079,7 @@ class WildfireEnv(MultiGridEnv):
             # Add reward to agent index which extinguished the fire
             # beta reward coeff = 3
                 a = self.grid.get(*tree_pos).index
-                agent_rewards[a] += 3
+                agent_rewards[a] += 3.
             # Reward accounts for each action blocking other agents (including itself)
             # Moving/Congesting agent coeff = 0.5
             for a in blocking_agent_index:
@@ -1215,7 +1216,8 @@ class WildfireEnv(MultiGridEnv):
                         agent_rewards[agent_j] += 5 + adj_trees
                 case _, True:   
                     agent_rewards -= 0.5 * len(trees_to_fire_state)
-                    
+            
+            agent_rewards /= 16.
         # agent rewards dictionary
             rewards = {a: agent_rewards[a] for a in self.agents}
 

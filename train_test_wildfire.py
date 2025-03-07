@@ -215,7 +215,7 @@ def train(config: DictConfig):
                 INIT_HP=config['init_hp'],  # IINIT_HP dictionary
                 # net_config=config['encoder_config'],  # Network configuration
                 max_steps=config['train_epochs'],  # Max number of training steps
-                # evo_steps=10000,  # Evolution frequency
+                evo_steps=config['valid_interval'],  # Evolution frequency
                 eval_steps=100,  # Number of steps in evaluation episode
                 eval_loop = config['episodes'],
                 learning_delay=1000,  # Steps before starting learning
