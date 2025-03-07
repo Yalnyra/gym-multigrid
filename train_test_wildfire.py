@@ -42,6 +42,7 @@ def create_env(config:DictConfig, render_mode=None, inference=False):
         delta_beta=config['agent_beta_impact'],
         # max_episode_steps=1,
         num_agents=num_agents,
+        max_steps=25,
         # unsupported in numpy 1.26
         # agent_start_positions=np.astype(start_pos, np.int32),
         agent_start_positions=start_pos,
@@ -162,7 +163,8 @@ def train(config: DictConfig):
     # Create and wrap the training environment
     model_path = f"{config['model_save_path']}/{config['run_id']}"
     # Save configuration for eval purposes
-    os.makedirs(model_path)
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
     with open(model_path + "/config.yaml", "w") as f:
         OmegaConf.save(config, f)
     
@@ -221,9 +223,9 @@ def train(config: DictConfig):
                 learning_delay=1000,  # Steps before starting learning
                 target=0.,  # Target score for early stopping
                 checkpoint=config['valid_interval'],
-                checkpoint_path=config['run_id'],
+                # checkpoint_path=config['run_id'],
                 overwrite_checkpoints=True,
-                # checkpoint_path=config['model_save_path'],
+                checkpoint_path=f"{config['model_save_path']}{config['run_id']}",
                 sum_scores=True,
                 wb=config['wandb']['enabled'],  # Weights and Biases tracking
                 config=config
@@ -250,15 +252,16 @@ def test(config:DictConfig):
     if config['name'] in ['ppo', 'matd3', 'maddpg']:
         path = "{}{}_0_{}".format(config['model_save_path'],config['run_id'],config['train_epochs'])
         model = load_model(path, config['name'])
-        # if config['wandb']['enabled']:
-        #     wandb.log_model(path=f"{config['run_id']}_0_{config['train_epochs']}.{ext}",
-        #                     name=f"{config['run_id']}_0_{config['train_epochs']}")
+        
 
     # Test the trained model
     test_model(test_env, config, model=model)
 
     # Close the environment
     test_env.close()
+    if config['wandb']['enabled']:
+            wandb.log_model(path=f"{config['run_id']}_0_{config['train_epochs']}.{ext}",
+                            name=f"{config['run_id']}_0_{config['train_epochs']}")
 
 OmegaConf.register_new_resolver(
     "random",

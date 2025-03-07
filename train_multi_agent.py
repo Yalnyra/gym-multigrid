@@ -27,7 +27,7 @@ def train_multi_agent(
     net_config=None,
     swap_channels=False,
     max_steps=500000,
-    evo_steps=25,
+    evo_steps=1000000,
     eval_steps=None,
     eval_loop=1,
     learning_delay=0,

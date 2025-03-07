@@ -16,9 +16,9 @@ defaults:
 
 hydra:
   run:
-    dir: /python_course/gym-multigrid/
+    dir: '\!_SOFT/gym-multigrid/'
   sweep:
-    dir: /python_course/gym-multigrid/
+    dir: '\!_SOFT/gym-multigrid/'
     subdir: ''
   launcher:
     # timeout_min: 2880
@@ -50,7 +50,7 @@ env:
   partial_obs: False
   cooperative_reward: True
 
-run_id: ${name}_${env.agents}_${env.world_size}_${env.reward_type}_${now:%Y-%m-%d}/${now:%H-%M-%S}
+run_id: ${name}_${env.agents}_${env.world_size}_${env.reward_type}_${now:%m_%d}_${now:%H_%M_%S}
 training_type: ???
 from_scratch: True
 job_type: train
