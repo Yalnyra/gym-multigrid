@@ -1,2 +1,4 @@
+
+checkpoint: ???
 from_scratch: True
 job_type: train

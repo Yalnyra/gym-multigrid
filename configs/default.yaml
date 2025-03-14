@@ -1,12 +1,12 @@
 defaults:
   - _self_
-  - algorithm: matd3
+  - algorithm: vdn
   - reward: default
   # - sweeper: wandb
   #   optional: True
   - experiments/env_size: default
 
-  - experiments/team_size: default
+  # - experiments.team_size: default
   - experiments/fire_spread: default
   # - override hydra/job_logging: file
   # - override hydra/launcher: submitit_local
@@ -16,9 +16,9 @@ defaults:
 
 hydra:
   run:
-    dir: '\!_SOFT/gym-multigrid/'
+    dir: 'python_course/gym-multigrid/'
   sweep:
-    dir: '\!_SOFT/gym-multigrid/'
+    dir: 'python_course/gym-multigrid/'
     subdir: ''
   launcher:
     # timeout_min: 2880
@@ -31,14 +31,24 @@ hydra:
 
 wandb: 
   enabled: False
+  entity: vinokur-eg-
   project: Wildfire
+  mode: online
+
+use_cuda: False  
 device: "cpu"
 
 sb3:
   _target_: algorithm.sb3.train
 
+agilerl:
+  _target_: algorithm.agilerl.train
+
+common_reward: False  # Run experiment with common reward setup
+reward_scalarisation: "sum"  # How to aggregate rewards to single common reward (only used if common_reward is True
+seed: 3456
 env:
-  agents: 5
+  agents: 7
   agents_inference: 5
   flashpoints: 3
   world_size: 13
@@ -53,10 +63,12 @@ env:
 run_id: ${name}_${env.agents}_${env.world_size}_${env.reward_type}_${now:%m_%d}_${now:%H_%M_%S}
 training_type: ???
 from_scratch: True
-job_type: train
+evaluate: False
 model_save_path: out/models/
+checkpoint: ''
 log: out/logs/
 train_epochs: 100_000
 memory_size: 10_000  # Max memory buffer size
-valid_interval: 5000 # Valid frequency during train
+valid_interval: 10_000 # Valid frequency during train
+batch_size_run: 1 # N of envs to run in parallel
 episodes: 25

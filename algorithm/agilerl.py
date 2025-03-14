@@ -2,6 +2,15 @@ from agilerl.algorithms import maddpg, matd3
 from omegaconf import DictConfig
 from omegaconf.errors import ConfigKeyError
 
+# AgileRL HPO & algorithms
+from train_multi_agent import train_multi_agent
+from agilerl.components.multi_agent_replay_buffer import MultiAgentReplayBuffer
+# from agilerl.hpo.mutation import Mutations
+# from agilerl.hpo.tournament import TournamentSelection
+# from agilerl.utils.utils import create_population
+from copy import deepcopy
+
+
 def model_MADDPG(env, config:DictConfig):
     nn_t = None
     try:
@@ -47,3 +56,724 @@ def model_MATD3(env, config:DictConfig):
         device=config['device'],
         **config['init_hp'],
     )
+
+def train(model, train_env, config):
+    # Initialise separate copies of the agent policy algorithm
+            pop = [deepcopy(model) for _ in range(config['env']['agents'])]
+            # Configure the multi-agent replay buffer
+            field_names = ["state", "action", "reward", "next_state", "done"]
+            memory = MultiAgentReplayBuffer(
+                config["memory_size"],
+                field_names=field_names,
+                agent_ids=train_env.unwrapped.agents,
+                device=config['device'],
+            )
+            trained_pop, pop_fitnesses = train_multi_agent(
+                env=train_env,  # Pettingzoo-style environment
+                env_name=config['run_id'],  # Environment name
+                algo=config['name'],  # Algorithm
+                pop=pop,  # Population of agents
+                memory=memory,  # Replay buffer
+                INIT_HP=config['init_hp'],  # IINIT_HP dictionary
+                # net_config=config['encoder_config'],  # Network configuration
+                max_steps=config['train_epochs'],  # Max number of training steps
+                evo_steps=config['valid_interval'],  # Evolution frequency
+                eval_steps=train_env.max_steps,  # Number of steps in evaluation episode
+                eval_loop = config['episodes'],
+                learning_delay=1000,  # Steps before starting learning
+                target=0.,  # Target score for early stopping
+                checkpoint=config['valid_interval'],
+                # checkpoint_path=config['run_id'],
+                overwrite_checkpoints=True,
+                checkpoint_path=f"{config['model_save_path']}{config['run_id']}",
+                sum_scores=True,
+                wb=config['wandb']['enabled'],  # Weights and Biases tracking
+                config=config
+            )
+            last_fitness = pop_fitnesses[-1]
+            elite_idx = last_fitness.index(max(last_fitness))
+            suffix = f'{config["run_id"]}_0_{config["train_epochs"]}.pt'
+            best_model = trained_pop[int(elite_idx)]
+            best_model.save_checkpoint(f"{config['model_save_path']}{suffix}")
+
+
+        import os
+import time
+import warnings
+from copy import deepcopy
+from datetime import datetime
+
+import numpy as np
+import wandb
+from torch.utils.data import DataLoader
+from tqdm import trange
+
+from agilerl.components.replay_data import ReplayDataset
+from agilerl.components.sampler import Sampler
+
+from omegaconf import DictConfig, OmegaConf
+import wandb.wandb_run
+
+
+
+
+def train_multi_agent(
+    env,
+    env_name,
+    algo,
+    pop,
+    memory,
+    sum_scores=True,
+    INIT_HP=None,
+    MUT_P=None,
+    net_config=None,
+    swap_channels=False,
+    max_steps=500000,
+    evo_steps=1000000,
+    eval_steps=None,
+    eval_loop=1,
+    learning_delay=0,
+    target=None,
+    tournament=None,
+    mutation=None,
+    checkpoint=None,
+    checkpoint_path=None,
+    overwrite_checkpoints=False,
+    save_elite=False,
+    elite_path=None,
+    wb=False,
+    verbose=True,
+    accelerator=None,
+    wandb_api_key=None,
+    config=None,
+):
+    """The general online multi-agent RL training function. Returns trained population of agents
+    and their fitnesses.
+
+    :param env: The environment to train in. Can be vectorized.
+    :type env: Gym-style environment
+    :param env_name: Environment name
+    :type env_name: str
+    :param algo: RL algorithm name
+    :type algo: str
+    :param pop: Population of agents
+    :type pop: list[object]
+    :param memory: Experience Replay Buffer
+    :type memory: object
+    :param sum_scores: Boolean flag indicating whether to sum sub-agents scores, typically True for co-operative environments, defaults to True
+    :type sum_scores: bool, optional
+    :param INIT_HP: Dictionary containing initial hyperparameters.
+    :type INIT_HP: dict
+    :param MUT_P: Dictionary containing mutation parameters, defaults to None
+    :type MUT_P: dict, optional
+    :param net_config: Network configuration dictionary, defaults to None
+    :type net_config: dict
+    :param swap_channels: Swap image channels dimension from last to first
+        [H, W, C] -> [C, H, W], defaults to False
+    :type swap_channels: bool, optional
+    :param max_steps: Maximum number of steps in environment, defaults to 50000
+    :type max_steps: int, optional
+    :param evo_steps: Evolution frequency (steps), defaults to 25
+    :type evo_steps: int, optional
+    :param eval_steps: Number of evaluation steps per episode. If None, will evaluate until
+        environment terminates or truncates. Defaults to None
+    :type eval_steps: int, optional
+    :param eval_loop: Number of evaluation episodes, defaults to 1
+    :type eval_loop: int, optional
+    :param learning_delay: Steps in environment before starting learning, defaults to 0
+    :type learning_delay: int, optional
+    :param target: Target score for early stopping, defaults to None
+    :type target: float, optional
+    :param tournament: Tournament selection object, defaults to None
+    :type tournament: object, optional
+    :param mutation: Mutation object, defaults to None
+    :type mutation: object, optional
+    :param checkpoint: Checkpoint frequency (steps), defaults to None
+    :type checkpoint: int, optional
+    :param checkpoint_path: Location to save checkpoint, defaults to None
+    :type checkpoint_path: str, optional
+    :param overwrite_checkpoints: Overwrite previous checkpoints during training, defaults to False
+    :type overwrite_checkpoints: bool, optional
+    :param save_elite: Boolean flag indicating whether to save elite member at the end
+        of training, defaults to False
+    :type save_elite: bool, optional
+    :param elite_path: Location to save elite agent, defaults to None
+    :type elite_path: str, optional
+    :param wb: Weights & Biases tracking, defaults to False
+    :type wb: bool, optional
+    :param verbose: Display training stats, defaults to True
+    :type verbose: bool, optional
+    :param accelerator: Accelerator for distributed computing, defaults to None
+    :type accelerator: accelerate.Accelerator(), optional
+    :param wandb_api_key: API key for Weights & Biases, defaults to None
+    :type wandb_api_key: str, optional
+    """
+    assert isinstance(
+        algo, str
+    ), "'algo' must be the name of the algorithm as a string."
+    assert isinstance(max_steps, int), "Number of steps must be an integer."
+    assert isinstance(evo_steps, int), "Evolution frequency must be an integer."
+    if target is not None:
+        assert isinstance(
+            target, (float, int)
+        ), "Target score must be a float or an integer."
+    if checkpoint is not None:
+        assert isinstance(checkpoint, int), "Checkpoint must be an integer."
+    assert isinstance(
+        wb, bool
+    ), "'wb' must be a boolean flag, indicating whether to record run with W&B"
+    assert isinstance(verbose, bool), "Verbose must be a boolean."
+    if save_elite is False and elite_path is not None:
+        warnings.warn(
+            "'save_elite' set to False but 'elite_path' has been defined, elite will not\
+                      be saved unless 'save_elite' is set to True."
+        )
+    if checkpoint is None and checkpoint_path is not None:
+        warnings.warn(
+            "'checkpoint' set to None but 'checkpoint_path' has been defined, checkpoint will not\
+                      be saved unless 'checkpoint' is defined."
+        )
+
+    start_time = time.time()
+
+    if wb:
+        if not hasattr(wandb, "api"):
+            if wandb_api_key is not None:
+                wandb.login(key=wandb_api_key)
+            else:
+                warnings.warn("Must login to wandb with API key.")
+
+        config_dict = {}
+        if config is not None:
+            config_dict = OmegaConf.to_container(
+                config, resolve=True, throw_on_missing=True #noqa
+            )
+        if INIT_HP is not None:
+            config_dict.update(INIT_HP)
+        if MUT_P is not None:
+            config_dict.update(MUT_P)
+        if net_config is not None:
+            config_dict.update(net_config)
+
+        if accelerator is not None:
+            accelerator.wait_for_everyone()
+            if accelerator.is_main_process:
+                wandb.init(
+        project=config['wandb']['project'],
+        config=config_dict,
+        name=config["run_id"],
+        sync_tensorboard=True,
+        job_type=config['job_type'],
+        resume="allow",
+        reinit=True,
+        monitor_gym=True,
+        )
+            accelerator.wait_for_everyone()
+        else:
+            wandb.init(
+        project=config['wandb']['project'],
+        config=config_dict,
+        name=config["run_id"],
+        sync_tensorboard=True,
+        job_type=config['job_type'],
+        resume="allow",
+        reinit=True,
+        monitor_gym=True,
+        )
+    if accelerator is not None:
+        accel_temp_models_path = f"models/{env_name}"
+        if accelerator.is_main_process:
+            if not os.path.exists(accel_temp_models_path):
+                os.makedirs(accel_temp_models_path)
+
+    if hasattr(env, "num_envs"):
+        is_vectorised = True
+        num_envs = env.num_envs
+    else:
+        is_vectorised = False
+        num_envs = 1
+
+    save_path = (
+        checkpoint_path.split(".pt")[0]
+        if checkpoint_path is not None
+        else "{}-EvoHPO-{}-{}".format(
+            env_name, algo, datetime.now().strftime("%m%d%Y%H%M%S")
+        )
+    )
+
+    if accelerator is not None:
+        # Create dataloader from replay buffer
+        replay_dataset = ReplayDataset(memory, pop[0].batch_size)
+        replay_dataloader = DataLoader(replay_dataset, batch_size=None)
+        replay_dataloader = accelerator.prepare(replay_dataloader)
+        sampler = Sampler(
+            distributed=True, dataset=replay_dataset, dataloader=replay_dataloader
+        )
+    else:
+        sampler = Sampler(distributed=False, memory=memory)
+
+    if accelerator is not None:
+        print(f"\nDistributed training on {accelerator.device}...")
+    else:
+        print("\nTraining...")
+
+    bar_format = "{l_bar}{bar:10}| {n:4}/{total_fmt} [{elapsed:>7}<{remaining:>7}, {rate_fmt}{postfix}]"
+    if accelerator is not None:
+        pbar = trange(
+            max_steps,
+            unit="step",
+            bar_format=bar_format,
+            ascii=True,
+            disable=not accelerator.is_local_main_process,
+        )
+    else:
+        pbar = trange(max_steps, unit="step", bar_format=bar_format, ascii=True)
+
+    agent_ids = deepcopy(env.agents)
+    pop_actor_loss = [{agent_id: [] for agent_id in agent_ids} for _ in pop]
+    pop_critic_loss = [{agent_id: [] for agent_id in agent_ids} for _ in pop]
+    pop_fitnesses = []
+    total_steps = 0
+    loss = None
+    checkpoint_count = 0
+
+    # Pre-training mutation
+    if accelerator is None:
+        if mutation is not None:
+            pop = mutation.mutation(pop, pre_training_mut=True)
+    # RL training loop
+    while np.less([agent.steps[-1] for agent in pop], max_steps).all():
+        if accelerator is not None:
+            accelerator.wait_for_everyone()
+        pop_episode_scores = []
+        for agent_idx, agent in enumerate(pop):  # Loop through population
+            state, info = env.reset()  # Reset environment at start of episode
+            scores = (
+                np.zeros((num_envs, 1))
+                if sum_scores
+                else np.zeros((num_envs, len(agent_ids)))
+            )
+            losses = {agent_id: [] for agent_id in agent_ids}
+            completed_episode_scores = []
+            steps = 0
+
+            if swap_channels:
+                if not is_vectorised:
+                    state = {
+                        agent_id: np.moveaxis(np.expand_dims(s, 0), [-1], [-3])
+                        for agent_id, s in state.items()
+                    }
+                else:
+                    state = {
+                        agent_id: np.moveaxis(s, [-1], [-3])
+                        for agent_id, s in state.items()
+                    }
+            for idx_step in range(evo_steps // num_envs):
+                # Get next action from agent
+                # print("Single obs space: ", state[0].shape)
+                cont_actions, discrete_action = agent.get_action(
+                    obs=state, training=True, infos=info
+                )
+                if agent.discrete_actions:
+                    action = discrete_action
+                else:
+                    action = cont_actions
+
+                if not is_vectorised:
+                    action = {agent: act[0] for agent, act in action.items()}
+                    cont_actions = {
+                        agent: act[0] for agent, act in cont_actions.items()
+                    }
+
+                # Act in environment
+                next_state, reward, termination, truncation, info = env.step(action)
+                score_increment = (
+                    (
+                        np.sum(np.array(list(reward.values())).transpose(), axis=-1)[
+                            :, np.newaxis
+                        ]
+                        if is_vectorised
+                        else np.sum(
+                            np.array(list(reward.values())).transpose(), axis=-1
+                        )
+                    )
+                    if sum_scores
+                    else np.array(list(reward.values())).transpose()
+                )
+                mean_reward = np.mean(list(reward.values()))
+                frac_burned = info[0]['burnt trees']
+                frac_unburned = info[0]['unburnt trees']
+                scores += score_increment
+                total_steps += num_envs
+                steps += num_envs
+                if wb:
+                    wandb.log({
+                            "train/reward": mean_reward,
+                            "train/burnt trees": frac_burned,
+                            "train/unburnt trees": frac_unburned
+                            }, step=total_steps)
+                # Save experience to replay buffer
+                if swap_channels:
+                    if not is_vectorised:
+                        state = {
+                            agent_id: np.squeeze(s) for agent_id, s in state.items()
+                        }
+                    next_state = {
+                        agent_id: np.moveaxis(ns, [-1], [-3])
+                        for agent_id, ns in next_state.items()
+                    }
+                # print(f"State/Action/Reward shapes:\n", state[0].shape, action[0].shape, reward[0].shape, next_state[0].shape)
+                memory.save_to_memory(
+                    state,
+                    cont_actions,
+                    reward,
+                    next_state,
+                    termination,
+                    is_vectorised=is_vectorised,
+                )
+
+                # Learn according to learning frequency
+                # Handle learn steps > num_envs
+                if agent.learn_step > num_envs:
+                    learn_step = agent.learn_step // num_envs
+                    if (
+                        idx_step % learn_step == 0
+                        and len(memory) >= agent.batch_size
+                        and memory.counter > learning_delay
+                    ):
+                        # Sample replay buffer
+                        experiences = sampler.sample(agent.batch_size)
+                        # Learn according to agent's RL algorithm
+                        loss = agent.learn(experiences)
+                        for agent_id in agent_ids:
+                            losses[agent_id].append(loss[f"{agent_id}"])
+
+                # Handle num_envs > learn step; learn multiple times per step in env
+                elif (
+                    len(memory) >= agent.batch_size and memory.counter > learning_delay
+                ):
+                    for _ in range(num_envs // agent.learn_step):
+                        # Sample replay buffer
+                        experiences = sampler.sample(agent.batch_size)
+                        # Learn according to agent's RL algorithm
+                        loss = agent.learn(experiences)
+                        for agent_id in agent_ids:
+                            losses[agent_id].append(loss[f"{agent_id}"])
+
+                # Update the state
+                if swap_channels and not is_vectorised:
+                    next_state = {
+                        agent_id: np.expand_dims(ns, 0)
+                        for agent_id, ns in next_state.items()
+                    }
+
+                state = next_state
+
+                reset_noise_indices = []
+                # Find which agents are "done" - i.e. terminated or truncated
+                dones = {
+                    agent_id: termination[agent_id] | truncation[agent_id]
+                    for agent_id in agent.agent_ids
+                }
+                if not is_vectorised:
+                    dones = {agent: np.array([done]) for agent, done in dones.items()}
+
+                for idx, agent_dones in enumerate(zip(*dones.values())):
+                    if all(agent_dones):
+                        completed_score = (
+                            float(scores[idx]) if sum_scores else list(scores[idx])
+                        )
+                        completed_episode_scores.append(completed_score)
+                        agent.scores.append(completed_score)
+                        scores[idx].fill(0)
+                        reset_noise_indices.append(idx)
+                        if not is_vectorised:
+                            state, info = env.reset()
+                agent.reset_action_noise(reset_noise_indices)
+            pbar.update(evo_steps // len(pop))
+
+            agent.steps[-1] += steps
+            pop_episode_scores.append(completed_episode_scores)
+            if len(losses[agent_ids[0]]) > 0:
+                if all([losses[a_id] for a_id in agent_ids]):
+                    for agent_id in agent_ids:
+                        actor_losses, critic_losses = list(zip(*losses[agent_id]))
+                        actor_losses = [
+                            loss for loss in actor_losses if loss is not None
+                        ]
+                        if actor_losses:
+                            pop_actor_loss[agent_idx][agent_id].append(
+                                np.mean(actor_losses)
+                            )
+                        pop_critic_loss[agent_idx][agent_id].append(
+                            np.mean(critic_losses)
+                        )
+        # Evaluate population
+        fitnesses = [
+            agent.test(
+                env,
+                swap_channels=swap_channels,
+                max_steps=eval_steps,
+                loop=eval_loop,
+                sum_scores=sum_scores,
+            )
+            for agent in pop
+        ]
+        pop_fitnesses.append(fitnesses)
+        if sum_scores:
+            mean_scores = [
+                (
+                    np.mean(episode_scores)
+                    if len(episode_scores) > 0
+                    else "0 completed episodes"
+                )
+                for episode_scores in pop_episode_scores
+            ]
+            mean_score_dict = {
+                "train/reward": np.mean(
+                    [
+                        mean_score
+                        for mean_score in mean_scores
+                        if not isinstance(mean_score, str)
+                    ]
+                )
+            }
+            fitness_dict = {
+                "eval/mean_fitness": np.mean(fitnesses),
+                "eval/best_fitness": np.max(fitnesses),
+            }
+        else:
+            pop_mean_scores = [
+                np.mean(np.array(score), axis=0)
+                for score in pop_episode_scores
+                if score
+            ]
+            if pop_episode_scores:
+                mean_scores = np.stack(pop_mean_scores, axis=0)
+                mean_score_dict = {
+                    "train/reward/" + agent: np.mean(mean_scores[:, idx], axis=-1)
+                    for idx, agent in enumerate(agent_ids)
+                }
+            else:
+                mean_score_dict = {
+                    "train/reward/" + agent: np.nan
+                    for idx, agent in enumerate(agent_ids)
+                }
+            mean_fitnesses = np.mean(fitnesses, axis=0)
+            max_fitnesses = np.max(fitnesses, axis=0)
+            fitness_dict = {
+                "eval/mean_fitness/" + agent: mean_fitnesses[idx]
+                for idx, agent in enumerate(agent_ids)
+            }
+            best_fitness_dict = {
+                "eval/best_fitness/" + agent: max_fitnesses[idx]
+                for idx, agent in enumerate(agent_ids)
+            }
+            fitness_dict.update(best_fitness_dict)
+
+        if wb:
+            wandb_dict = {
+                "step": (
+                    total_steps * accelerator.state.num_processes
+                    if accelerator is not None and accelerator.is_main_process
+                    else total_steps
+                ),
+            }
+            wandb_dict.update(fitness_dict)
+            wandb_dict.update(mean_score_dict)
+
+            actor_loss_dict = {}
+            critic_loss_dict = {}
+
+            for agent_idx, agent in enumerate(pop):
+                for agent_id, actor_loss, critic_loss in zip(
+                    pop_actor_loss[agent_idx].keys(),
+                    pop_actor_loss[agent_idx].values(),
+                    pop_critic_loss[agent_idx].values(),
+                ):
+                    if actor_loss:
+                        actor_loss_dict[
+                            f"train/agent_{agent_idx}_{agent_id}_actor_loss"
+                        ] = np.mean(actor_loss[-10:])
+                        wandb_dict.update(actor_loss_dict)
+                    if critic_loss:
+                        critic_loss_dict[
+                            f"train/agent_{agent_idx}_{agent_id}_critic_loss"
+                        ] = np.mean(critic_loss[-10:])
+                        wandb_dict.update(critic_loss_dict)
+                    
+
+            if accelerator is not None:
+                accelerator.wait_for_everyone()
+                if accelerator.is_main_process:
+                    wandb.log(wandb_dict)
+                accelerator.wait_for_everyone()
+            else:
+                wandb.log(wandb_dict, step=wandb_dict['step'])
+
+            for idx, agent in enumerate(pop):
+                wandb.log(
+                    {
+                        f"learn_step_agent_{idx}": agent.learn_step,
+                        f"learning_rate_actor_agent_{idx}": agent.lr_actor,
+                        f"learning_rate_critic_agent_{idx}": agent.lr_critic,
+                        f"batch_size_agent_{idx}": agent.batch_size,
+                        f"indi_fitness_agent_{idx}": agent.fitness[-1],
+                    }
+                )
+        # Update step counter
+        for agent in pop:
+            agent.steps.append(agent.steps[-1])
+
+        # Early stop if consistently reaches target
+        if target is not None:
+            if (
+                np.all(
+                    np.greater([np.mean(agent.fitness[-10:]) for agent in pop], target)
+                )
+                and len(pop[0].steps) >= 100
+            ):
+                if wb:
+                    wandb.finish()
+                return pop, pop_fitnesses
+
+        # Tournament selection and population mutation
+        if tournament and mutation is not None:
+            if accelerator is not None:
+                accelerator.wait_for_everyone()
+                for model in pop:
+                    model.unwrap_models()
+                accelerator.wait_for_everyone()
+                if accelerator.is_main_process:
+                    elite, pop = tournament.select(pop)
+                    pop = mutation.mutation(pop)
+                    for pop_i, model in enumerate(pop):
+                        
+                        model.save_checkpoint(
+                            f"{config['model_save_path']}{config['run_id']}_{pop_i}_{config['train_epochs']}.pt"
+                        )
+                accelerator.wait_for_everyone()
+                if not accelerator.is_main_process:
+                    for pop_i, model in enumerate(pop):
+                        model.load_checkpoint(
+                            f"{config['model_save_path']}{config['run_id']}_{pop_i}_{config['train_epochs']}.pt"
+                        )
+                accelerator.wait_for_everyone()
+                for model in pop:
+                    model.wrap_models()
+            else:
+                elite, pop = tournament.select(pop)
+                pop = mutation.mutation(pop)
+
+            if save_elite:
+                elite_save_path = (
+                    f"{config['model_save_path']}{config['run_id']}_elite_{config['train_epochs']}.pt"
+                )
+                elite.save_checkpoint(elite_save_path)
+
+        if verbose:
+            if sum_scores:
+                fitness = ["%.2f" % fitness for fitness in fitnesses]
+                avg_fitness = ["%.2f" % np.mean(agent.fitness[-5:]) for agent in pop]
+                avg_score = ["%.2f" % np.mean(agent.scores[-10:]) for agent in pop]
+            else:
+                fitness_arr = np.array([fitness for fitness in fitnesses])
+                avg_fitness_arr = np.array(
+                    [np.mean(agent.fitness[-5:], axis=0) for agent in pop]
+                )
+                avg_score_arr = np.array(
+                    [np.mean(agent.scores[-10:], axis=0) for agent in pop]
+                )
+                fitness = {
+                    agent: fitness_arr[:, idx] for idx, agent in enumerate(agent_ids)
+                }
+                avg_fitness = {
+                    agent: avg_fitness_arr[idx] for idx, agent in enumerate(agent_ids)
+                }
+                avg_score = {
+                    agent: avg_score_arr[idx] for idx, agent in enumerate(agent_ids)
+                }
+                mean_scores = {
+                    agent: mean_scores[:, idx] for idx, agent in enumerate(agent_ids)
+                }
+            agents = [agent.index for agent in pop]
+            num_steps = [agent.steps[-1] for agent in pop]
+            muts = [agent.mut for agent in pop]
+            pbar.update(0)
+
+            print()
+            print(
+                "DateTime, now, H:m:s-u",
+                datetime.now().hour,
+                ":",
+                datetime.now().minute,
+                ":",
+                datetime.now().second,
+                "-",
+                datetime.now().microsecond,
+            )
+            total_time = time.time() - start_time
+            print(
+                "Steps",
+                total_steps / total_time,
+                "per sec,",
+                total_steps / (total_time / 60),
+                "per min.",
+            )
+            print(
+                f"""
+                --- Global Steps {total_steps} ---
+                Fitness:\t{fitness}
+                Score:\t\t{mean_scores}
+                5 fitness avgs:\t{avg_fitness}
+                10 score avgs:\t{avg_score}
+                Agents:\t\t{agents}
+                Steps:\t\t{num_steps}
+                Mutations:\t{muts}
+                """,
+                end="\r",
+            )
+
+        # Save model checkpoint
+        if checkpoint is not None:
+            if pop[0].steps[-1] // checkpoint > checkpoint_count:
+                if accelerator is not None:
+                    accelerator.wait_for_everyone()
+                    for model in pop:
+                        model.unwrap_models()
+                    accelerator.wait_for_everyone()
+                    if accelerator.is_main_process:
+                        for i, agent in enumerate(pop):
+                            current_checkpoint_path = (
+                                f"{save_path}_{i}.pt"
+                                if overwrite_checkpoints
+                                else f"{save_path}_{i}_{agent.steps[-1]}.pt"
+                            )
+                            agent.save_checkpoint(current_checkpoint_path)
+                        print("Saved checkpoint. at:", save_path)
+                    accelerator.wait_for_everyone()
+                    for model in pop:
+                        model.wrap_models()
+                    accelerator.wait_for_everyone()
+                else:
+                    for i, agent in enumerate(pop):
+                        current_checkpoint_path = (
+                            f"{save_path}_{i}.pt"
+                            if overwrite_checkpoints
+                            else f"{save_path}_{i}_{agent.steps[-1]}.pt"
+                        )
+                        agent.save_checkpoint(current_checkpoint_path)
+                    print("Saved checkpoint. at:", save_path)
+                checkpoint_count += 1
+
+    # if wb:
+    #     if accelerator is not None:
+    #         accelerator.wait_for_everyone()
+    #         if accelerator.is_main_process:
+    #             wandb.finish()
+    #         accelerator.wait_for_everyone()
+    #     else:
+    #         wandb.finish()
+
+    pbar.close()
+    return pop, pop_fitnesses

@@ -1,6 +1,5 @@
 # Stable baselines 3
 from sbx import PPO
-from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import (
     CheckpointCallback,
     EvalCallback,
@@ -47,13 +46,20 @@ class TensorboardCallback(BaseCallback):
         # obs, reward, done, info = env.step(action)
         # dt_step_target += 1
         info = self.locals.get('info')
-        self.locals.get('reward')
+        # self.locals.get('reward')
+        rewards = self.locals.get('rewards')
+        if rewards is not None:
+            for v in rewards:
+                self.logger.record('train/reward', v)
+                # self.logger.record_mean('train/mean_reward', v)
         if info is not None:
             frac_burned = info[0]['burnt_trees']
             frac_unburned = info[0]['unburnt_trees']
             self.logger.record('train/burnt trees', frac_burned)
+            # self.logger.record_mean('train/mean burnt trees', frac_burned)
             self.logger.record('train/unburnt trees', frac_unburned)
-            self.logger.record('train/reward',self.locals.get('reward'))
+            # self.logger.record_mean('train/reward',self.locals.get('reward'))
+            
         return True
     
     def _on_training_end(self):
@@ -94,8 +100,7 @@ def setup_callbacks(eval_env, config:DictConfig):
     ))
     return callbacks
 
-def train(model, eval_env, config:DictConfig):
-    eval_env = Monitor(eval_env,filename=config['log'],info_keywords=('burnt trees', 'unburnt trees', 'mean_reward'))
+def train(model: PPO, eval_env, config:DictConfig):
     model.learn(
         total_timesteps=config['train_epochs'],
         tb_log_name=f"{config['run_id']}",

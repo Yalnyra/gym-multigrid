@@ -1,18 +1,18 @@
 hydra:
   run:
-    dir: /python_course/gym-multigrid/
+    dir: python_course/gym-multigrid/
   sweep:
-    dir: /python_course/gym-multigrid/
+    dir: python_course/gym-multigrid/
     subdir: ''
   launcher:
     _target_: hydra_plugins.hydra_joblib_launcher.joblib_launcher.JoblibLauncher
-    n_jobs: -1
+    n_jobs: -3
     backend: null
     prefer: processes
     require: null
     verbose: 0
     timeout: null
-    pre_dispatch: 2*n_jobs
+    pre_dispatch: n_jobs
     batch_size: auto
     temp_folder: null
     max_nbytes: null
@@ -123,18 +123,17 @@ hydra:
     hydra:
     - hydra.mode=MULTIRUN
     task:
-    - algorithm=maddpg
-    - train_epochs=10000
-    - valid_interval=2000
-    - env.reward_type=fire_adjacent
-    - experiments/fire_spread=inefficient
-    - wandb.enabled=True
+    - algorithm=matd3
+    - train_epochs=50_000
+    - env.reward_type=agent_above
+    - experiments/team_size=ten
+    - +experiments/obs=default,obs_range
   job:
     name: train_test_wildfire
     chdir: true
-    override_dirname: algorithm=maddpg,env.reward_type=fire_adjacent,experiments/fire_spread=inefficient,train_epochs=10000,valid_interval=2000,wandb.enabled=True
-    id: train_test_wildfire_5
-    num: 5
+    override_dirname: +experiments/obs=default,obs_range,algorithm=matd3,env.reward_type=agent_above,experiments/team_size=ten,train_epochs=50_000
+    id: ???
+    num: ???
     config_name: default
     env_set: {}
     env_copy: []
@@ -157,13 +156,13 @@ hydra:
     - path: ''
       schema: structured
       provider: schema
-    output_dir: D:\python_course\gym-multigrid
+    output_dir: ???
     choices:
-      experiments/fire_spread: inefficient
-      experiments/team_size: default
+      experiments/fire_spread: default
+      experiments/team_size: ten
       experiments/env_size: default
       reward: default
-      algorithm: maddpg
+      algorithm: matd3
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: default
@@ -174,3 +173,55 @@ hydra:
       hydra/launcher: joblib
       hydra/output: default
   verbose: false
+wandb:
+  enabled: false
+  entity: vinokur-eg-
+  project: Wildfire
+  mode: online
+use_cuda: false
+device: cpu
+sb3:
+  _target_: algorithm.sb3.train
+agilerl:
+  _target_: algorithm.agilerl.train
+common_reward: false
+reward_scalarisation: sum
+env:
+  agents: 10
+  agents_inference: 10
+  flashpoints: 3
+  world_size: 13
+  alpha_transition: 0.3
+  beta_transition: 0.8
+  agent_beta_impact: 0.8
+  obs_type: typed_one_hot
+  reward_type: agent_above
+  partial_obs: false
+  cooperative_reward: true
+run_id: ${name}_${env.agents}_${env.world_size}_${env.reward_type}_${now:%m_%d}_${now:%H_%M_%S}
+training_type: agile_rl
+from_scratch: true
+evaluate: false
+model_save_path: out/models/
+log: out/logs/
+train_epochs: 50000
+memory_size: 10000
+valid_interval: 5000
+batch_size_run: 1
+episodes: 25
+name: matd3
+algorithm:
+  _target_: algorithm.agilerl.model_MATD3
+init_hp:
+  batch_size: 32
+  O_U_noise: true
+  expl_noise: 0.3
+  mean_noise: 0.0
+  theta: 0.15
+  dt: 0.01
+  lr_actor: 0.0005
+  lr_critic: 0.0005
+  gamma: 0.99
+  tau: 0.01
+  learn_step: 5
+  policy_freq: 2

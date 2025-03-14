@@ -5,6 +5,9 @@ import functools
 from itertools import combinations
 from typing import TypeVar, Callable, NamedTuple, Literal
 from collections import Counter, deque
+import gym
+from gym.spaces import flatdim
+import gym.spaces
 # from heapq import heapify, heappop, heappush
 from gym_multigrid.typing import Position
 from gym_multigrid.core.world import WorldT
@@ -51,7 +54,6 @@ class WildfireEnv(MultiGridEnv):
         delta_beta=0.8,
         size=17,
         num_agents=2,
-        agent_start_positions=((1, 1), (15, 15)),
         agent_colors=("red", "blue"),
         agent_groups=None,
         agent_types=None,
@@ -76,11 +78,14 @@ class WildfireEnv(MultiGridEnv):
             ] = "default",
         render_selfish_region_boundaries=False,
         cooperative_reward=False,
+        common_reward=False,
+        reward_scalarisation: Literal["sum", "mean"] = "sum",
         log_selfish_region_metrics=False,
         selfish_region_xmin=None,
         selfish_region_xmax=None,
         selfish_region_ymin=None,
         selfish_region_ymax=None,
+        seed=-1
     ):
         """Create a WildfireEnv environment
 
@@ -132,7 +137,6 @@ class WildfireEnv(MultiGridEnv):
         self.alpha = alpha
         self.beta = beta
         self.delta_beta = delta_beta
-        self.agent_start_positions = agent_start_positions
         self.agent_colors = agent_colors
         self.agent_groups = agent_groups
         # one-hot encoding of rival non-cooperative groups of agents
@@ -240,10 +244,30 @@ class WildfireEnv(MultiGridEnv):
             actions_set=actions_set,
             world=self.world,
             render_mode=render_mode,
+            
+            np_random_seed=seed,
         )
         self.helper_grid = None
+        self._np_random = np.random.default_rng(seed)
+        self._np_random_seed = seed
+        start_pos = self._np_random.uniform(low=1, high=size-1, size=(num_agents, 2))
+        agent_start_positions = tuple((int(pos[0]), int(pos[1])) for pos in start_pos)
+        self.agent_start_positions = agent_start_positions
+        self.common_reward = common_reward
+        if self.common_reward:
+            if reward_scalarisation == "sum":
+                self.reward_agg_fn = lambda rewards: sum(rewards)
+            elif reward_scalarisation == "mean":
+                self.reward_agg_fn = lambda rewards: sum(rewards) / len(rewards)
+            else:
+                raise ValueError(
+                    f"Invalid reward_scalarisation: {reward_scalarisation} (only support 'sum' or 'mean')"
+                ) 
         # self.observation_space: Box | Dict = self.observation_space()
         # self.action_space = Discrete(n=len(self.actions), start=0)
+
+    def seed(self):
+        return self._np_random_seed
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent=None) -> Box:
@@ -262,13 +286,50 @@ class WildfireEnv(MultiGridEnv):
         observation_space = Box(
                     low=low,
                     high=high,
-                    dtype=np.float32,
+                    dtype=np.int32,
                 )
                 
 
         return observation_space
     
 
+    def get_state_size(self):
+        """ Returns the shape of the state"""
+        return int(self.observation_space().shape[0])
+    
+    def get_avail_actions(self):
+        avail_actions = []
+        for agent_id in self.agents:
+            avail_agent = self.get_avail_agent_actions(agent_id)
+            avail_actions.append(avail_agent)
+        return avail_actions
+
+    def get_avail_agent_actions(self, agent_id):
+        """ Returns the available actions for agent_id """
+        return [1] * len(self.actions)
+
+    def get_total_actions(self):
+        """ Returns the total number of actions an agent could ever take """
+        # TODO: This is only suitable for a discrete 1 dimensional action space for each agent
+        return len(self.actions) 
+
+    def get_obs_shape(self):
+        return  int(self.observation_space().shape[0])
+    
+    def get_env_info(self):
+        env_info = {"state_shape": self.num_agents * self.get_obs_shape(),
+                    "obs_shape": self.num_agents * self.get_obs_shape(),
+                    "n_actions": int(len(self.actions)),
+                    "avail_actions": self.get_total_actions(),
+                    "n_agents": self.num_agents,
+                    "episode_limit": self.max_steps}
+        return env_info
+
+    def save_replay(self):
+        pass
+
+    def get_stats(self):
+        return {}
 
     def observe(self, agent:AgentID):
         """
@@ -329,11 +390,11 @@ class WildfireEnv(MultiGridEnv):
             if self.initial_fire_size % 2 == 0:
                 # for even sized initial fires, choose location of top left corner of fire region uniformly at random
                 top_left_corner = (
-                    random.randint(
+                    self._np_random.integers(
                         1,
                         self.grid_size_without_walls - (self.initial_fire_size),
                     ),
-                    random.randint(
+                    self._np_random.integers(
                         1,
                         self.grid_size_without_walls - (self.initial_fire_size),
                     ),
@@ -346,14 +407,16 @@ class WildfireEnv(MultiGridEnv):
             else:
                 # for odd sized initial fires, choose location of center of fire region uniformly at random
                 fire_square_center = (
-                    random.randint(
-                        1 + ((self.initial_fire_size - 1) / 2),
-                        self.grid_size_without_walls
+                    self._np_random.integers(
+                       low = 1 + ((self.initial_fire_size - 1) / 2),
+
+                       high = self.grid_size_without_walls
                         - ((self.initial_fire_size - 1) / 2),
                     ),
-                    random.randint(
-                        1 + ((self.initial_fire_size - 1) / 2),
-                        self.grid_size_without_walls
+                    self._np_random.integers(
+                       low= 1 + ((self.initial_fire_size - 1) / 2),
+                       
+                       high= self.grid_size_without_walls
                         - ((self.initial_fire_size - 1) / 2),
                     ),
                 )
@@ -445,7 +508,7 @@ class WildfireEnv(MultiGridEnv):
                     self.grid_size_without_walls + 1,
                     self.grid_size_without_walls + 1,
                 ),
-                dtype=np.float32,
+                dtype=np.int32,
             )
             for i in range(self.num_agents)
         }
@@ -519,20 +582,23 @@ class WildfireEnv(MultiGridEnv):
         """
         # initialize array to store state vector
         s = np.zeros(
-            (
-                self.obs_depth + 1,
-                self.grid_size,
-                self.grid_size,
-            ),
-            dtype=np.float32,
-        )
+                (
+                    self.obs_depth,
+                    self.grid_size_without_walls + 1,
+                    self.grid_size_without_walls + 1,
+                ),
+                dtype=np.int32,
+            )
 
         # update tree states and walls in state representation
+        # TODO: fix shape of the grid to have (N, M - 1, M - 1)
+        # Where M is full size with walls, N obs depth
         for o in self.helper_grid.grid:
             # switch x and y coordinates because the y-coordinate specifies the row, while the x-coordinate specifies the column
             if o.type == "tree":
-                s[o.state, o.pos[1], o.pos[0]] = 1
+                s[o.state, o.pos[1] - 1, o.pos[0] - 1] = 1
             if o.type == "wall":
+                continue
                 s[len(STATE_IDX_TO_COLOR_WILDFIRE), o.pos[1], o.pos[0]] = 1
 
         # update agent positions in state representation
@@ -705,7 +771,10 @@ class WildfireEnv(MultiGridEnv):
              super().reset(seed=seed, options=options['state'])
         else:
              super().reset(seed=seed)
-
+        self._np_random = np.random.default_rng(seed)
+        self._np_random_seed = seed
+        start_pos = self._np_random.uniform(low=1, high=self.grid_size-1, size=(self.num_agents, 2))
+        self.agent_start_positions = tuple((int(pos[0]), int(pos[1])) for pos in start_pos)
         # get agent observations
         self.obs = self._get_obs()
         # obs = {a: agent_obs[a] for a in self.agents}
@@ -973,7 +1042,8 @@ class WildfireEnv(MultiGridEnv):
         terminated = np.zeros(len(self.agents))
         truncated = np.zeros(len(self.agents))
         # Move agents sequentially, in random order
-        order = np.random.permutation(len(self.agents))
+        assert self._np_random is not None
+        order = self._np_random.permutation(len(self.agents))
         blocking_agent_index = []
         for i in order:
             next_pos = self.agents_storage[i].pos
@@ -1010,7 +1080,7 @@ class WildfireEnv(MultiGridEnv):
             if c.state == 0:
                 pos = np.array(c.pos)
                 # transition from healthy to on fire with probability 1 - (1 - alpha)^n
-                if np.random.rand() < 1 - (1 - self.alpha) ** self.neighbors_on_fire(
+                if self._np_random.random() < 1 - (1 - self.alpha) ** self.neighbors_on_fire(
                     pos
                 ):
                     # update relevant attributes and lists
@@ -1022,7 +1092,7 @@ class WildfireEnv(MultiGridEnv):
                             num_trees_to_fire_state_sr[c.region] += 1
             if c.state == 1:
                 # transition from on fire to burnt with probability 1 - beta + delta_beta * agent_above
-                if np.random.rand() < 1 - self.beta + c.agent_above * self.delta_beta:
+                if self._np_random.random() < 1 - self.beta + c.agent_above * self.delta_beta:
                     # update relevant attributes and list
                     trees_to_burnt_state.append(c)
                     self.burnt_trees += 1
@@ -1054,14 +1124,14 @@ class WildfireEnv(MultiGridEnv):
         # check if episode is done
         if len(self.trees_on_fire) == 0:
             terminated = np.ones(len(self.agents))
-            term_reward = self.burnt_trees / self.grid_size_without_walls ** 2
-            rewards = {a: -term_reward for a in self.agents}
+            term_reward = -self.burnt_trees / self.grid_size_without_walls ** 2
+            rewards = term_reward if self.common_reward else {a: term_reward for a in self.agents}
             # self.agents = []
             # self.agents_storage = []
         elif self.step_count >= self.max_steps:
             truncated = np.ones(len(self.agents))
             trunc_reward = len(self.unburnt_trees) / self.grid_size_without_walls ** 2
-            rewards = {a: trunc_reward for a in self.agents}
+            rewards = trunc_reward if self.common_reward else {a: trunc_reward for a in self.agents}
             # self.agents = []
             # self.agents_storage = []
         else:
@@ -1219,7 +1289,10 @@ class WildfireEnv(MultiGridEnv):
             
             agent_rewards /= 16.
         # agent rewards dictionary
-            rewards = {a: agent_rewards[a] for a in self.agents}
+            if self.common_reward:
+                rewards = float(self.reward_agg_fn(agent_rewards))
+            else:
+                rewards = {a: agent_rewards[a] for a in self.agents}
 
         # get agent observations after the environment step
         self.obs = self._get_obs()

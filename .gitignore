@@ -8,10 +8,13 @@ wildfire-0.gif
 *.npy
 runs/*
 ppo_random_collect_tensorboard/*
-out/*
+**/out/
 wandb/*
 .DS_Store
 outputs/
 wandb/
 .conda/
 **/multirun/
+.hydra/
+events.*
+*.log
