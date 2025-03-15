@@ -51,7 +51,7 @@ class QLearner:
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
         rewards = batch["reward"][:, :-1]
-        print("reward shape: ", rewards.shape)
+        # print("reward shape: ", rewards.shape)
         actions = batch["actions"][:, :-1]
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
@@ -76,11 +76,11 @@ class QLearner:
         self.mac.hidden_states.shape
         for t in range(batch.max_seq_length):
             agent_outs = self.mac.forward(batch, t=t)
-            print("Agent throughput", agent_outs.shape)
+            # print("Agent throughput", agent_outs.shape)
             mac_out.append(agent_outs)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
-        print("Batch Action-val", actions.data.shape)
-        print("Batch of Q val: ", mac_out[:,:-1].shape)
+        # print("Batch Action-val", actions.data.shape)
+        # print("Batch of Q val: ", mac_out[:,:-1].shape)
         # Pick the Q-Values for the actions taken by each agent
         chosen_action_qvals = th.gather(
             mac_out[:, :-1], 
@@ -90,7 +90,7 @@ class QLearner:
         )  # Remove the last dim
         # Calculate the Q-Values necessary for the target
         target_mac_out = []
-        print("Gathered Q vals: ", chosen_action_qvals.shape)
+        # print("Gathered Q vals: ", chosen_action_qvals.shape)
         self.target_mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length):
             target_agent_outs = self.target_mac.forward(batch, t=t)

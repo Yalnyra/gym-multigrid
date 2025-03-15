@@ -40,6 +40,7 @@ def create_env(total_conf:DictConfig, render_mode=None, inference=False):
     # Resize team size based on if run in inference or test
     config = total_conf.env
     num_agents = config['agents'] if not inference else config['agents_inference']
+    seed = total_conf.seed if not inference else total_conf.eval_seed
     env = WildfireEnv(
         render_mode=render_mode,
         agent_representation_mode=config['obs_type'],
@@ -171,20 +172,6 @@ def test_model(env, config:DictConfig, model=None):
 def train(config: DictConfig, logger: Logger):
     # Create and wrap the training environment
     model_path = f"{config['model_save_path']}/{config['run_id']}"
-    # Save configuration for eval purposes
-    if not os.path.exists(model_path):
-        os.makedirs(model_path)
-    with open(model_path + "/config.yaml", "w") as f:
-        OmegaConf.save(config, f)
-        if config['wandb']['enabled']:
-            logger.wandb.log_artifact(model_path+'/config.yaml')
-    
-    if config["training_type"] == 'marl':
-        args = OmegaConf.to_container(config,
-                                      resolve=True,
-                                      throw_on_missing=True,)
-        run_sequential(args, logger)
-        exit()
 
     train_env = create_env(config, render_mode=None, inference=False)
     print("Original observation space shape:", train_env.observation_space().shape)
@@ -434,7 +421,6 @@ def run_sequential(config: dict, logger):
             logger.log_stat("episode", episode, runner.t_env)
             logger.print_recent_stats()
             last_log_T = runner.t_env
-
     logger.console_logger.info("Finished Training, time: {}".format(time_str(time.time() - start_time)))
     runner.close_env()
 
@@ -519,12 +505,28 @@ def main(cfg: DictConfig):
     print(OmegaConf.to_container(
             cfg, resolve=True, throw_on_missing=True #noqa
         ))
+    
+    model_path = f"{cfg['model_save_path']}/{cfg['run_id']}"
+
+
+    # Save configuration for eval purposes
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+    with open(model_path + "/config.yaml", "w") as f:
+        OmegaConf.save(cfg, f)
+        if cfg['wandb']['enabled']:
+            logger.wandb.log_artifact(model_path+'/config.yaml')
+    
+    if cfg["training_type"] == 'marl':
+        args = OmegaConf.to_container(cfg,
+                                      resolve=True,
+                                      throw_on_missing=True,)
+        run_sequential(args, logger)
+        exit()
     if not cfg['evaluate']:
         train(cfg, logger)
-        # run_sequential(cfg, logger)
     test(cfg)
-    # evaluate_sequential(cfg, logger)
-
+    logger.save(model_path)
     wandb.finish(0)    
 
 

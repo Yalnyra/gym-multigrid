@@ -2,6 +2,8 @@ from collections import defaultdict
 from hashlib import sha256
 import json
 import logging
+import io
+import os
 
 import numpy as np
 
@@ -49,10 +51,11 @@ class Logger:
         # elif "key" in config["env_args"]:
         #     env_name += "_" + config["env_args"]["key"]
 
-        non_hash_keys = ["seed", "wandb", "device", "use_cuda"]
+        # non_hash_keys = ["seed", "wandb", "device", "use_cuda"]
+        hash_keys = ["env", "name", "train_epochs"]
         self.config_hash = sha256(
             json.dumps(
-                {k: v for k, v in config.items() if k not in non_hash_keys},
+                {k: v for k, v in config.items() if k not in hash_keys},
                 sort_keys=True,
             ).encode("utf8")
         ).hexdigest()[-10:]
@@ -133,6 +136,19 @@ class Logger:
             log_str += "{:<25}{:>8}".format(k + ":", item)
             log_str += "\n" if i % 4 == 0 else "\t"
         self.console_logger.info(log_str)
+
+    def save(self, f: str):
+        # Dump recorded stats in a json
+        data = json.dumps(
+                {k: v for k, v in self.stats.items()},
+                sort_keys=True,
+                indent=1,
+            ).encode("utf8")
+        with io.open(os.path.join(os.path.abspath(f), "log.json"), "wb") as file:
+                file.write(data)
+        if self.use_wandb:
+            self.wandb.log_artifact(os.path.abspath(f))
+
 
     def finish(self):
         if self.use_wandb:

@@ -1,12 +1,12 @@
 defaults:
   - _self_
   - algorithm: vdn
-  - reward: default
+  - reward: fire_adjacent
   # - sweeper: wandb
   #   optional: True
   - experiments/env_size: default
 
-  # - experiments.team_size: default
+  - experiments/team_size: default
   - experiments/fire_spread: default
   # - override hydra/job_logging: file
   # - override hydra/launcher: submitit_local
@@ -16,9 +16,11 @@ defaults:
 
 hydra:
   run:
-    dir: 'python_course/gym-multigrid/'
+    dir: 'D:/python_course/gym-multigrid/'
+    # dir: 'D:/'
   sweep:
-    dir: 'python_course/gym-multigrid/'
+    dir: 'D:/python_course/gym-multigrid/'
+    # dir: 'D:/'
     subdir: ''
   launcher:
     # timeout_min: 2880
@@ -47,6 +49,7 @@ agilerl:
 common_reward: False  # Run experiment with common reward setup
 reward_scalarisation: "sum"  # How to aggregate rewards to single common reward (only used if common_reward is True
 seed: 3456
+eval_seed: -1
 env:
   agents: 7
   agents_inference: 5
@@ -69,6 +72,6 @@ checkpoint: ''
 log: out/logs/
 train_epochs: 100_000
 memory_size: 10_000  # Max memory buffer size
-valid_interval: 10_000 # Valid frequency during train
+valid_interval: 2_000 # Valid frequency during train
 batch_size_run: 1 # N of envs to run in parallel
-episodes: 25
+episodes: 5

@@ -6,71 +6,11 @@ from algorithm.components.episode_buffer import EpisodeBatch
 from train_test_wildfire import create_env, wrap_env
 from gym_multigrid.utils.misc import save_frames_as_gif
 import torch as th
-
-
-# class ClassicRunner():
-
-
-#     def run(self, test_mode=False):
-#         frames = []
-#     for ep in range(config["episodes"]):
-#         steps = 0
-#         terminated, truncated = {0: False}, {0: False}
-#         (obs, info) = env.reset()
-#         ep_reward = 0.
-#         while not terminated[0]:
-#             agents = list(range(config['env']['agents']))
-#             actions = {agent: env.action_space().sample() for agent in agents}
-#             inference_dt = time.time()
-#             # Sample actual actions
-#             if model is not None:
-#                 # actions, states = model.predict(obs, deterministic=True)
-#                 match config['training_type']:
-#                     case 'sb3':
-#                         actions = {agent: model.predict(obs[agent], deterministic=False)[0] for agent in agents}
-#                     case 'agile_rl':
-#                         _, actions = model.get_action(
-#                             obs, training=False, infos=info
-#                         )
-                        
-#                 print("using model, actions are: ", actions)
-
-#             inference_dt = 1.0 / (time.time() - inference_dt + 1e-6)
-            
-#             obs, reward, terminated, truncated, infos = env.step(actions)
-#             # Show next step on screen and add to the video frames list
-#             frames.append(env.render())
-#             mean_reward_per_agent = np.mean(list(reward.values()))
-#             ep_reward += float(mean_reward_per_agent)
-#             frac_burned = infos[0]['burnt trees']
-#             frac_unburned = infos[0]['unburnt trees']
-#             print(
-#                 f"Reward: {reward}, \n burnt trees %: {frac_burned}, \n terminated: {terminated}, truncated: {truncated}, Frames length: {len(frames)}"
-#                 # , Inference time in ms: {inference_dt}"
-#             )
-            
-#             steps += 1
-#             if config['wandb']['enabled']:
-#             # Log reward at each step to wandb
-#                 wandb.log(
-#                     {
-#                         "eval/reward": mean_reward_per_agent,
-#                         "eval/burnt trees": frac_burned,
-#                         "eval/unburnt trees": frac_unburned,
-#                         "Inference FPS": inference_dt,
-#                     }
-#                 )
-#         if config['wandb']['enabled']:
-#         # Total episode reward
-#             wandb.log(
-#                 {
-#                     "eval/mean_reward": ep_reward,
-#                 }
-#         )
-
 from algorithm.utils.logging import Logger
 from wandb import Video
 import os
+
+
 class EpisodeRunner:
     def __init__(self, args, logger: Logger):
         self.args = args
@@ -139,7 +79,8 @@ class EpisodeRunner:
         else:
             episode_return = np.zeros(self.env.num_agents)
         self.mac.init_hidden(batch_size=self.batch_size)
-        log_prefix = "test/" if test_mode else "train/"
+        log_prefix = "eval/" if test_mode else "train/"
+        last_burnt = 0.
         while not terminated:
             s = self.env.get_state()
             s_np = np.array([s for _ in range(self.env.num_agents)])
@@ -149,8 +90,8 @@ class EpisodeRunner:
                 "avail_actions": th.tensor(self.env.get_avail_actions()).unsqueeze(0),
                 "obs": th.tensor(o_np).flatten().unsqueeze(0).unsqueeze(0),
             }
-            for k, v in pre_transition_data.items():
-                print(f"{k} shape: ", v.shape)
+            # for k, v in pre_transition_data.items():
+            #     # print(f"{k} shape: ", v.shape)
             self.batch.update(pre_transition_data, ts=self.t)
 
             # Pass the entire batch of experiences up till now to the agents
@@ -182,7 +123,7 @@ class EpisodeRunner:
             post_transition_data["reward"] = th.tensor(reward)
 
             self.batch.update(post_transition_data, ts=self.t)
-
+            last_burnt = env_info[0].get('burnt trees')
             self.t += 1
         s = self.env.get_state()
         s_np = np.array([s for _ in range(self.env.num_agents)])
@@ -212,8 +153,8 @@ class EpisodeRunner:
         #     }
         # )
         cur_stats["n_episodes"] = 1 + cur_stats.get("n_episodes", 0)
-        cur_stats["last burnt trees"] = env_info[0].get("burnt trees", -1)
-        # cur_stats["win"] = cur_stats.get("win", []).append(int(env_info[0].get("burnt trees", 0) <= self.win_treshold))
+        cur_stats["last burnt trees"] = last_burnt + cur_stats.get("last burnt trees", 0)
+        # cur_stats["win"] = cur_stats.get("win", []).append(last_burnt <= self.win_treshold)
         # cur_stats["win_rate"] = np.mean(cur_stats['win']) if 'win' in cur_stats.keys() else 0
         cur_stats["ep_length"] = self.t + cur_stats.get("ep_length", 0)
 
@@ -253,10 +194,10 @@ class EpisodeRunner:
                 )
             total_returns = np.array(returns).sum(axis=-1)
             self.logger.log_stat(
-                prefix + "mean_reward", total_returns.mean(), self.t_env
+                prefix + "total_mean_reward", total_returns.mean(), self.t_env
             )
             self.logger.log_stat(
-                prefix + "std_of_mean_reward", total_returns.std(), self.t_env
+                prefix + "std_of_total_mean_reward", total_returns.std(), self.t_env
             )
         returns.clear()
 
@@ -265,5 +206,8 @@ class EpisodeRunner:
                 self.logger.log_stat(
                     prefix + "mean_" + k, v / stats["n_episodes"], self.t_env
                 )
+        # self.logger.log_stat(
+        #             prefix + "win_rate", np.mean(stats['win']), self.t_env
+        #         )
         
         stats.clear()

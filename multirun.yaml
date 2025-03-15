@@ -1,8 +1,8 @@
 hydra:
   run:
-    dir: /python_course/gym-multigrid/
+    dir: D:/python_course/gym-multigrid/
   sweep:
-    dir: /python_course/gym-multigrid/
+    dir: D:/python_course/gym-multigrid/
     subdir: ''
   launcher:
     _target_: hydra_plugins.hydra_joblib_launcher.joblib_launcher.JoblibLauncher
@@ -12,7 +12,7 @@ hydra:
     require: null
     verbose: 0
     timeout: null
-    pre_dispatch: 2*n_jobs
+    pre_dispatch: n_jobs
     batch_size: auto
     temp_folder: null
     max_nbytes: null
@@ -123,16 +123,19 @@ hydra:
     hydra:
     - hydra.mode=MULTIRUN
     task:
-    - algorithm=maddpg,matd3
-    - train_epochs=50_000
-    - env.reward_type=default,fire_entropy,fire_adjacent
-    - experiments/team_size=default
-    - experiments/fire_spread=default,inefficient
+    - algorithm=qmix,vdn,iql
+    - train_epochs=100_000
+    - reward=fire_adjacent
+    - common_reward=True
+    - experiments/team_size=ten
+    - use_rnn=True,False
+    - +experiments/obs=default,range_ten,range_six
     - wandb.enabled=True
+    - seed=8001
   job:
     name: train_test_wildfire
     chdir: true
-    override_dirname: algorithm=maddpg,matd3,env.reward_type=default,fire_entropy,fire_adjacent,experiments/fire_spread=default,inefficient,experiments/team_size=default,train_epochs=50_000,wandb.enabled=True
+    override_dirname: +experiments/obs=default,range_ten,range_six,algorithm=qmix,vdn,iql,common_reward=True,experiments/team_size=ten,reward=fire_adjacent,seed=8001,train_epochs=100_000,use_rnn=True,False,wandb.enabled=True
     id: ???
     num: ???
     config_name: default
@@ -160,10 +163,10 @@ hydra:
     output_dir: ???
     choices:
       experiments/fire_spread: default
-      experiments/team_size: default
+      experiments/team_size: ten
       experiments/env_size: default
-      reward: default
-      algorithm: matd3
+      reward: fire_adjacent
+      algorithm: vdn
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: default
@@ -176,45 +179,93 @@ hydra:
   verbose: false
 wandb:
   enabled: true
+  entity: vinokur-eg-
   project: Wildfire
+  mode: online
+use_cuda: false
 device: cpu
 sb3:
   _target_: algorithm.sb3.train
+agilerl:
+  _target_: algorithm.agilerl.train
+common_reward: true
+reward_scalarisation: mean
+seed: 8001
 env:
-  agents: 5
-  agents_inference: 5
+  agents: 10
+  agents_inference: 10
   flashpoints: 3
   world_size: 13
   alpha_transition: 0.3
   beta_transition: 0.8
   agent_beta_impact: 0.8
   obs_type: typed_one_hot
-  reward_type: default
+  reward_type: fire_adjacent
   partial_obs: false
   cooperative_reward: true
-run_id: ${name}_${env.agents}_${env.world_size}_${env.reward_type}_${now:%Y-%m-%d}/${now:%H-%M-%S}
-training_type: agile_rl
+run_id: ${name}_${env.agents}_${env.world_size}_${env.reward_type}_${now:%m_%d}_${now:%H_%M_%S}
+training_type: ???
 from_scratch: true
-job_type: train
+evaluate: false
 model_save_path: out/models/
+checkpoint: ''
 log: out/logs/
-train_epochs: 50000
+train_epochs: 100000
 memory_size: 10000
-valid_interval: 1000
-episodes: 25
-name: matd3
-algorithm:
-  _target_: algorithm.agilerl.model_MATD3
-init_hp:
-  batch_size: 16
-  O_U_noise: true
-  expl_noise: 0.3
-  mean_noise: 0.0
-  theta: 0.15
-  dt: 0.01
-  lr_actor: 0.001
-  lr_critic: 0.001
-  gamma: 0.99
-  tau: 0.01
-  learn_step: 5
-  policy_freq: 2
+valid_interval: 2000
+batch_size_run: 1
+episodes: 5
+runner: episode
+mac: basic_mac
+env_args: {}
+test_nepisode: ${episodes}
+test_interval: ${valid_interval}
+test_greedy: true
+log_interval: ${valid_interval}
+runner_log_interval: ${valid_interval}
+learner_log_interval: ${valid_interval}
+t_max: ${train_epochs}
+buffer_cpu_only: true
+use_tensorboard: true
+wandb_mode: online
+wandb_save_model: true
+save_model: true
+save_model_interval: ${valid_interval}
+checkpoint_path: ''
+render: false
+load_step: 0
+save_replay: true
+local_results_path: ${model_save_path}
+gamma: 0.99
+batch_size: 32
+buffer_size: 5000
+lr: 0.0005
+optim_alpha: 0.99
+optim_eps: 1.0e-05
+grad_norm_clip: 10
+add_value_last_step: true
+n_agents: ${env.agents}
+n_actions: 4
+state_shape: ''
+agent: rnn
+hidden_dim: 64
+obs_agent_id: false
+obs_last_action: false
+repeat_id: 1
+label: default_label
+hypergroup: null
+action_selector: epsilon_greedy
+epsilon_start: 1.0
+epsilon_finish: 0.05
+epsilon_anneal_time: 50000
+evaluation_epsilon: 0.0
+target_update_interval_or_tau: 200
+obs_individual_obs: false
+standardise_returns: false
+standardise_rewards: true
+agent_output_type: q
+learner: q_learner
+double_q: true
+use_rnn: true
+mixer: vdn
+name: vdn

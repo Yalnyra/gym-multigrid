@@ -759,6 +759,8 @@ class WildfireEnv(MultiGridEnv):
             Here, it contains the number of burnt trees in the environment after reset
         """
         # reset environment attributes
+        if seed is None:
+            seed = self._np_random_seed
         self.burnt_trees = 0
         self.trees_on_fire = []
         self.unburnt_trees = []

@@ -1,5 +1,12 @@
+
 defaults:
   - pymarl
+
+
+name: "qmix"
+common_reward: True  # Run experiment with common reward setup
+reward_scalarisation: "mean"  # How to aggregate rewards to single common reward (only used if common_reward is True)
+
 
 # --- QMIX specific parameters ---
 

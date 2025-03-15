@@ -4,6 +4,10 @@ defaults:
   - pymarl
 
 
+common_reward: False  # Run experiment with common reward setup
+reward_scalarisation: "mean"  # How to aggregate rewards to single common reward (only used if common_reward is True)
+
+
 # --- IQL specific parameters ---
 
 # use epsilon greedy action selector
@@ -33,7 +37,7 @@ learner: "q_learner"
 standardise_returns: False
 standardise_rewards: True
 double_q: True
-use_rnn: False
+use_rnn: True
 mixer: # Mixer becomes None
 
 name: "iql"
