@@ -36,30 +36,29 @@ from supersuit import pettingzoo_env_to_vec_env_v1, concat_vec_envs_v1
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
-def create_env(total_conf:DictConfig, render_mode=None, inference=False):
+def create_env(config:DictConfig, render_mode=None, inference=False):
     # Resize team size based on if run in inference or test
-    config = total_conf.env
-    num_agents = config['agents'] if not inference else config['agents_inference']
-    seed = total_conf.seed if not inference else total_conf.eval_seed
+    num_agents = config.agents if not inference else config.agents_inference
+    seed = config.seed if not inference else config.eval_seed
     env = WildfireEnv(
         render_mode=render_mode,
-        agent_representation_mode=config['obs_type'],
-        reward_type=config['reward_type'],
-        alpha=config["alpha_transition"],
-        beta=config["beta_transition"],
-        delta_beta=config['agent_beta_impact'],
+        agent_representation_mode=config.obs_type,
+        reward_type=config.reward_type,
+        alpha=config.alpha_transition,
+        beta=config.beta_transition,
+        delta_beta=config.agent_beta_impact,
         # max_episode_steps=1,
         num_agents=num_agents,
         max_steps=25,
-        size=config["world_size"],
-        initial_fire_size=config['flashpoints'],
-        cooperative_reward=config['cooperative_reward'],
-        common_reward=total_conf.common_reward,
-        reward_scalarisation=total_conf.reward_scalarisation,
-        partial_obs=config['partial_obs'],
+        size=config.world_size,
+        initial_fire_size=config.flashpoints,
+        cooperative_reward=config.cooperative_reward,
+        common_reward=config.common_reward,
+        reward_scalarisation=config.reward_scalarisation,
+        partial_obs=config.partial_obs,
         render_selfish_region_boundaries=False,
         log_selfish_region_metrics=False,
-        seed=total_conf.seed,
+        seed=seed,
     )
     return env
 
@@ -73,7 +72,7 @@ def wrap_env(env, config:DictConfig):
             from stable_baselines3.common.monitor import Monitor
             # env = Monitor(env,filename=config['log'],info_keywords=('eval/burnt trees', 'eval/unburnt trees', 'mean_reward'))
             env = pettingzoo_env_to_vec_env_v1(env)
-            env = concat_vec_envs_v1(env, config['env']['agents'], num_cpus=1, base_class="stable_baselines3")
+            env = concat_vec_envs_v1(env, config['agents'], num_cpus=1, base_class="stable_baselines3")
         case 'agile_rl':
             # env = AsyncPettingZooVecEnv([lambda:env])
             pass
@@ -319,34 +318,36 @@ def run_sequential(config: dict, logger):
 
         # # Go through all files in args.checkpoint_path
         for file in os.listdir(args.model_save_path):
-            full_name = os.path.join(args.model_save_path, file)
+            epochs = str.split(file, sep='_')[-1]
+            full_name = os.path.join(args.model_save_path,args.checkpoint+"_0_"+epochs)
             # Check if they are dirs the names of which are numbers
-            name = str.split(file)[-1]
-            if os.path.isfile(full_name) and name.isdigit():
-                timesteps.append(int(name))
-
+            # print(epochs)
+            if os.path.isdir(full_name) and epochs.isdigit():
+                timesteps.append(int(epochs))
+        # print(timesteps)
         if args.train_epochs == 0:
             # choose the max timestep
             timestep_to_load = max(timesteps)
         else:
             # choose the timestep closest to load_step
-            timestep_to_load = min(timesteps, key=lambda x: abs(x - args.check))
+            timestep_to_load = min(timesteps, key=lambda x: abs(x - int(args.train_epochs)))
 
-        model_path = os.path.join(args.model_save_path,args.run_id+"_0_"+str(args.train_epochs))
+        model_path = os.path.join(args.model_save_path,args.checkpoint+"_0_"+str(timestep_to_load))
 
 
         logger.console_logger.info("Loading model from {}".format(model_path))
         learner.load_models(model_path)
-        runner.t_env = timestep_to_load
+        runner.t_env = args.train_epochs
 
         if args.evaluate or args.save_replay:
+            print("start eval")
             runner.log_train_stats_t = runner.t_env
             evaluate_sequential(args, runner)
             logger.log_stat("episode", runner.t_env, runner.t_env)
             logger.print_recent_stats()
             logger.console_logger.info("Finished Evaluation")
             return
-
+    print("skip eval")
     # start training
     episode = 0
     last_test_T = -args.valid_interval - 1
@@ -390,6 +391,8 @@ def run_sequential(config: dict, logger):
             last_test_T = runner.t_env
             for _ in range(n_test_runs):
                 runner.run(test_mode=True)
+                if args.save_replay:
+                    runner.save_replay()
 
         if args.save_model and (
             runner.t_env - model_save_time >= args.save_model_interval

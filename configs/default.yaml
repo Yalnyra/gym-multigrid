@@ -5,7 +5,7 @@ defaults:
   # - sweeper: wandb
   #   optional: True
   - experiments/env_size: default
-
+  - experiments/obs: default
   - experiments/team_size: default
   - experiments/fire_spread: default
   # - override hydra/job_logging: file
@@ -50,20 +50,27 @@ common_reward: False  # Run experiment with common reward setup
 reward_scalarisation: "sum"  # How to aggregate rewards to single common reward (only used if common_reward is True
 seed: 3456
 eval_seed: -1
-env:
-  agents: 7
-  agents_inference: 5
-  flashpoints: 3
-  world_size: 13
-  alpha_transition: 0.3
-  beta_transition: 0.8
-  agent_beta_impact: 0.8
-  obs_type: typed_one_hot
-  reward_type: default
-  partial_obs: False
-  cooperative_reward: True
+# env:
+agents: 7
+agents_inference: 5
+flashpoints: 3
+world_size: 13
+alpha_transition: 0.3
+beta_transition: 0.8
+agent_beta_impact: 0.8
+obs_type: typed_one_hot
+reward_type: default
+agent_view_size: 13
+partial_obs: False
 
-run_id: ${name}_${env.agents}_${env.world_size}_${env.reward_type}_${now:%m_%d}_${now:%H_%M_%S}
+cooperative_reward: True
+
+observations: 
+  False: full
+  True: partial_{$agent_view_size}
+
+
+run_id: ${name}_${agents}_${world_size}_${reward_type}_obs_${agent_view_size}
 training_type: ???
 from_scratch: True
 evaluate: False
@@ -72,6 +79,6 @@ checkpoint: ''
 log: out/logs/
 train_epochs: 100_000
 memory_size: 10_000  # Max memory buffer size
-valid_interval: 2_000 # Valid frequency during train
+valid_interval: 10_000 # Valid frequency during train
 batch_size_run: 1 # N of envs to run in parallel
 episodes: 5

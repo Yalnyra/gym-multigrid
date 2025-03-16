@@ -48,7 +48,7 @@ add_value_last_step: True
 
 # --- Agent parameters ---
 
-n_agents: ${env.agents}
+n_agents: ${agents}
 n_actions: 4
 state_shape: ''
 agent: "rnn" # Default rnn agent

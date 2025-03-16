@@ -1,6 +1,6 @@
 # @package _global_
 
-env:
-  cooperative_reward: True
-  reward_type: islands_size,
+# env:
+cooperative_reward: True
+reward_type: islands_size,
             "fire_islands_size"

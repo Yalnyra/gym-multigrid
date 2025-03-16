@@ -1,4 +1,4 @@
 # @package _global_
 
-env:
-  reward_type: agent_above
+# env:
+reward_type: agent_above

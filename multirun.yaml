@@ -123,19 +123,21 @@ hydra:
     hydra:
     - hydra.mode=MULTIRUN
     task:
-    - algorithm=qmix,vdn,iql
+    - algorithm=qmix,iql,vdn
     - train_epochs=100_000
     - reward=fire_adjacent
     - common_reward=True
     - experiments/team_size=ten
     - use_rnn=True,False
-    - +experiments/obs=default,range_ten,range_six
+    - experiments/obs=range_six,range_ten
     - wandb.enabled=True
     - seed=8001
+    - eval_seed=3456
+    - save_replay=False
   job:
     name: train_test_wildfire
     chdir: true
-    override_dirname: +experiments/obs=default,range_ten,range_six,algorithm=qmix,vdn,iql,common_reward=True,experiments/team_size=ten,reward=fire_adjacent,seed=8001,train_epochs=100_000,use_rnn=True,False,wandb.enabled=True
+    override_dirname: algorithm=qmix,iql,vdn,common_reward=True,eval_seed=3456,experiments/obs=range_six,range_ten,experiments/team_size=ten,reward=fire_adjacent,save_replay=False,seed=8001,train_epochs=100_000,use_rnn=True,False,wandb.enabled=True
     id: ???
     num: ???
     config_name: default
@@ -164,6 +166,7 @@ hydra:
     choices:
       experiments/fire_spread: default
       experiments/team_size: ten
+      experiments/obs: default
       experiments/env_size: default
       reward: fire_adjacent
       algorithm: vdn
@@ -191,19 +194,23 @@ agilerl:
 common_reward: true
 reward_scalarisation: mean
 seed: 8001
-env:
-  agents: 10
-  agents_inference: 10
-  flashpoints: 3
-  world_size: 13
-  alpha_transition: 0.3
-  beta_transition: 0.8
-  agent_beta_impact: 0.8
-  obs_type: typed_one_hot
-  reward_type: fire_adjacent
-  partial_obs: false
-  cooperative_reward: true
-run_id: ${name}_${env.agents}_${env.world_size}_${env.reward_type}_${now:%m_%d}_${now:%H_%M_%S}
+eval_seed: 3456
+agents: 10
+agents_inference: 10
+flashpoints: 3
+world_size: 13
+alpha_transition: 0.3
+beta_transition: 0.8
+agent_beta_impact: 0.8
+obs_type: typed_one_hot
+reward_type: fire_adjacent
+agent_view_size: 13
+partial_obs: false
+cooperative_reward: true
+observations:
+  false: full
+  true: partial_{$agent_view_size}
+run_id: ${name}_${agents}_${world_size}_${reward_type}_obs_${agent_view_size}
 training_type: ???
 from_scratch: true
 evaluate: false
@@ -212,7 +219,7 @@ checkpoint: ''
 log: out/logs/
 train_epochs: 100000
 memory_size: 10000
-valid_interval: 2000
+valid_interval: 10000
 batch_size_run: 1
 episodes: 5
 runner: episode
@@ -234,7 +241,7 @@ save_model_interval: ${valid_interval}
 checkpoint_path: ''
 render: false
 load_step: 0
-save_replay: true
+save_replay: false
 local_results_path: ${model_save_path}
 gamma: 0.99
 batch_size: 32
@@ -244,7 +251,7 @@ optim_alpha: 0.99
 optim_eps: 1.0e-05
 grad_norm_clip: 10
 add_value_last_step: true
-n_agents: ${env.agents}
+n_agents: ${agents}
 n_actions: 4
 state_shape: ''
 agent: rnn
@@ -269,3 +276,5 @@ double_q: true
 use_rnn: true
 mixer: vdn
 name: vdn
+experiments:
+  obs: {}

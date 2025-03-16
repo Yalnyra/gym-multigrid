@@ -1,5 +1,5 @@
 # @package _global_
 
-env:
-  agents: 15
-  agents_inference: 10
+# env:
+agents: 15
+agents_inference: 10

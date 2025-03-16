@@ -52,7 +52,12 @@ class Logger:
         #     env_name += "_" + config["env_args"]["key"]
 
         # non_hash_keys = ["seed", "wandb", "device", "use_cuda"]
-        hash_keys = ["env", "name", "train_epochs"]
+        hash_keys = ["agents", "agents_inference", "flashpoints", "world_size",
+                "alpha_transition",
+                "beta_transition", 
+                "agent_beta_impact",
+                "obs_type", "partial_obs", "agent_view_size", "name"
+                ]
         self.config_hash = sha256(
             json.dumps(
                 {k: v for k, v in config.items() if k not in hash_keys},

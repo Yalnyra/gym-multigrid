@@ -55,9 +55,9 @@ class EpisodeRunner:
         return self.env.get_env_info()
 
     def save_replay(self):
-        path = os.path.join(self.args['log'],self.args['run_id'],'-',self.args['train_epochs'],".gif")
-        save_frames_as_gif(frames=self.frames, path=self.args['log'], filename=self.args['run_id'], ep=self.args['train_epochs'], fps=5)
-        if self.args['wandb']['enabled']:
+        path = os.path.join(self.args.log,self.args.run_id+'-'+str(self.t_env)+".gif")
+        save_frames_as_gif(frames=self.frames, path=self.args.log, filename=self.args.run_id, ep=self.t_env, fps=5)
+        if self.args.wandb['enabled']:
             self.logger.wandb.log({"video": Video(path, format="gif")})
         self.frames = []
 
@@ -66,7 +66,7 @@ class EpisodeRunner:
 
     def reset(self):
         self.batch = self.new_batch()
-        self.frames = []
+        # self.frames = []
         self.env.reset()
         self.t = 0
 
@@ -102,7 +102,8 @@ class EpisodeRunner:
             _, reward, terminated, truncated, env_info = self.env.step(actions.squeeze().cpu().numpy())
             terminated = terminated or truncated
             if test_mode:
-                self.frames.append(self.env.render())
+                # if args.save_replay:
+                # self.frames.append(self.env.render())
                 # burnt trees and unburnt trees
                 for k, v in env_info[0].items():
                     self.logger.log_stat(
