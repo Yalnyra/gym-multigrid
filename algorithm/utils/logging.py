@@ -8,6 +8,32 @@ import os
 import numpy as np
 
 
+def squash_info(info):
+    new_info = {}
+    keys = set([k for i in info for k in i.keys()])
+    keys.discard("TimeLimit.truncated")
+    keys.discard("terminal_observation")
+    keys.discard("n_episode")
+    for key in keys:
+        values = [d[key] for d in info if key in d]
+        if len(values) == 1:
+            new_info[key] = values[0]
+            continue
+
+        mean = np.mean([np.array(v).sum() for v in values])
+        std = np.std([np.array(v).sum() for v in values])
+
+        split_key = key.rsplit("/", 1)
+        mean_key = split_key[:]
+        std_key = split_key[:]
+        mean_key[-1] = "mean_" + mean_key[-1]
+        std_key[-1] = "std_" + std_key[-1]
+
+        new_info["/".join(mean_key)] = mean
+        new_info["/".join(std_key)] = std
+    return new_info
+
+
 class Logger:
     def __init__(self, console_logger):
         self.console_logger = console_logger
@@ -144,13 +170,12 @@ class Logger:
 
     def save(self, f: str):
         # Dump recorded stats in a json
-        data = json.dumps(
-                {k: v for k, v in self.stats.items()},
+        with io.open(os.path.join(os.path.abspath(f), "log.json"), "w", encoding='utf8') as file:
+                # file.write(data)
+                json.dump(
+                {k: v for k, v in self.stats.items()}, file,
                 sort_keys=True,
-                indent=1,
-            ).encode("utf8")
-        with io.open(os.path.join(os.path.abspath(f), "log.json"), "wb") as file:
-                file.write(data)
+                indent=1,)
         if self.use_wandb:
             self.wandb.log_artifact(os.path.abspath(f))
 

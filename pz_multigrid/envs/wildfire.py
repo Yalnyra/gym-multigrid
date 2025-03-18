@@ -34,6 +34,7 @@ from gym_multigrid.utils.window import Window
 from gym_multigrid.utils.misc import (
     render_agent_tiles,
     get_initial_fire_coordinates,
+    save_frames_as_gif
 )
 
 AgentID = TypeVar("AgentID", int, str)
@@ -263,11 +264,21 @@ class WildfireEnv(MultiGridEnv):
                 raise ValueError(
                     f"Invalid reward_scalarisation: {reward_scalarisation} (only support 'sum' or 'mean')"
                 ) 
+        self.frames = []
+        self.recording = False
+        self.step_count = 0
         # self.observation_space: Box | Dict = self.observation_space()
         # self.action_space = Discrete(n=len(self.actions), start=0)
 
     def seed(self):
         return self._np_random_seed
+    
+    def start_rec(self):
+        self.frames = []
+        self.recording = True
+
+    def stop_rec(self):
+        self.recording = False
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent=None) -> Box:
@@ -325,8 +336,9 @@ class WildfireEnv(MultiGridEnv):
                     "episode_limit": self.max_steps}
         return env_info
 
-    def save_replay(self):
-        pass
+    def save_replay(self, path, f, ep):
+        save_frames_as_gif(frames=self.frames, path=path, filename=f, ep=ep, fps=5)
+
 
     def get_stats(self):
         return {}
@@ -1308,6 +1320,7 @@ class WildfireEnv(MultiGridEnv):
         self.info = {a: self.info for a in self.agents}
         terminated = {idx: True if val==1. else False for idx, val in enumerate(terminated)}
         truncated = {idx: True if val==1. else False for idx, val in enumerate(truncated)}
+        print(self.step_count)
         return self.obs, rewards, terminated, truncated, self.info
 
     def render(self, close=False, highlight=False, tile_size=TILE_PIXELS):
@@ -1415,5 +1428,8 @@ class WildfireEnv(MultiGridEnv):
 
         if self.render_mode == "human":
             self.window.show_img(img)
+        
+        if self.recording:
+            self.frames.append(img)
 
         return img

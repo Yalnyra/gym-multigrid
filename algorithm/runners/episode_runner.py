@@ -53,15 +53,25 @@ class EpisodeRunner:
 
     def get_env_info(self):
         return self.env.get_env_info()
+    
+    def start_rec(self):
+        self.env.start_rec()
+
+    def stop_rec(self):
+        self.env.stop_rec()
 
     def save_replay(self):
-        path = os.path.join(self.args.log,self.args.run_id+'-'+str(self.t_env)+".gif")
-        save_frames_as_gif(frames=self.frames, path=self.args.log, filename=self.args.run_id, ep=self.t_env, fps=5)
+        path = os.path.join(self.args.log,self.args.run_id+'-'+str(self.t)+".gif")
+        self.env.save_replay(self.args.log, self.args.run_id, self.t_env)
         if self.args.wandb['enabled']:
-            self.logger.wandb.log({"video": Video(path, format="gif")})
-        self.frames = []
+            try:
+                self.logger.wandb.log({"video": Video(path, format="gif")})
+            except(FileNotFoundError):
+                print("file not found:", path)
+        # self.frames = []
 
     def close_env(self):
+        self.stop_rec()
         self.env.close()
 
     def reset(self):
@@ -74,6 +84,7 @@ class EpisodeRunner:
         self.reset()
 
         terminated = False
+        truncated = False
         if self.args.common_reward:
             episode_return = 0
         else:
@@ -81,17 +92,20 @@ class EpisodeRunner:
         self.mac.init_hidden(batch_size=self.batch_size)
         log_prefix = "eval/" if test_mode else "train/"
         last_burnt = 0.
+        last_unburnt = 1.
         while not terminated:
-            s = self.env.get_state()
+            s = [self.env.get_state()]
+            # print(self.env.step_count)
             s_np = np.array([s for _ in range(self.env.num_agents)])
             o_np = np.array([obs for _, obs in self.env._get_obs().items()])
             pre_transition_data = {
-                "state": th.tensor(s_np).flatten().unsqueeze(0).unsqueeze(0),
-                "avail_actions": th.tensor(self.env.get_avail_actions()).unsqueeze(0),
-                "obs": th.tensor(o_np).flatten().unsqueeze(0).unsqueeze(0),
+                "state": th.tensor(s_np).flatten().unsqueeze(0),
+                "avail_actions": th.tensor(self.env.get_avail_actions()),
+                "obs": th.tensor(o_np).flatten().unsqueeze(0),
             }
             # for k, v in pre_transition_data.items():
-            #     # print(f"{k} shape: ", v.shape)
+            #     print(f"{k} shape: ", v.shape)
+            self.batch.max_seq_length
             self.batch.update(pre_transition_data, ts=self.t)
 
             # Pass the entire batch of experiences up till now to the agents
@@ -100,10 +114,10 @@ class EpisodeRunner:
                 self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode
             )
             _, reward, terminated, truncated, env_info = self.env.step(actions.squeeze().cpu().numpy())
-            terminated = terminated or truncated
+            terminated = terminated[0] or truncated[0]
+            if self.args.save_replay:
+                self.env.render()
             if test_mode:
-                # if args.save_replay:
-                # self.frames.append(self.env.render())
                 # burnt trees and unburnt trees
                 for k, v in env_info[0].items():
                     self.logger.log_stat(
@@ -111,8 +125,8 @@ class EpisodeRunner:
                     )
             
             post_transition_data = {
-                "actions": actions.unsqueeze(1),
-                "terminated": [(terminated[0] != env_info.get("episode_limit", False),)],
+                "actions": actions.unsqueeze(0),
+                "terminated": [(terminated != env_info.get("episode_limit", False),)],
             }
             if self.args.common_reward:
                 episode_return += reward
@@ -121,18 +135,19 @@ class EpisodeRunner:
                 # Collapsing reward into one single
                 reward = tuple(reward.values())
                 episode_return += np.mean(reward)
-            post_transition_data["reward"] = th.tensor(reward)
+            post_transition_data["reward"] = th.tensor([reward]).unsqueeze(0)
 
             self.batch.update(post_transition_data, ts=self.t)
             last_burnt = env_info[0].get('burnt trees')
+            last_unburnt = env_info[0].get('unburnt trees')
             self.t += 1
         s = self.env.get_state()
         s_np = np.array([s for _ in range(self.env.num_agents)])
         o_np = np.array([obs for _, obs in self.env._get_obs().items()])
         last_data = {
-                "state": th.tensor(s_np).flatten().unsqueeze(0).unsqueeze(0),
-                "avail_actions": th.tensor(self.env.get_avail_actions()).unsqueeze(0),
-                "obs": th.tensor(o_np).flatten().unsqueeze(0).unsqueeze(0),
+                "state": th.tensor(s_np).flatten().unsqueeze(0),
+                "avail_actions": th.tensor(self.env.get_avail_actions()),
+                "obs": th.tensor(o_np).flatten().unsqueeze(0),
             }
         if test_mode and self.args.render:
             print(f"Episode reward: {episode_return}")
@@ -142,7 +157,7 @@ class EpisodeRunner:
         outputs, actions = self.mac.select_actions(
             self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode
         )
-        self.batch.update({"actions": actions.unsqueeze(-1)}, ts=self.t)
+        self.batch.update({"actions": actions.unsqueeze(0)}, ts=self.t)
 
         cur_stats = self.test_stats if test_mode else self.train_stats
         cur_returns = self.test_returns if test_mode else self.train_returns
@@ -154,7 +169,8 @@ class EpisodeRunner:
         #     }
         # )
         cur_stats["n_episodes"] = 1 + cur_stats.get("n_episodes", 0)
-        cur_stats["last burnt trees"] = last_burnt + cur_stats.get("last burnt trees", 0)
+        cur_stats["burnt trees"] = last_burnt + cur_stats.get("burnt trees", 0)
+        cur_stats['unburnt trees'] = last_unburnt + cur_stats.get("unburnt trees", 0)
         # cur_stats["win"] = cur_stats.get("win", []).append(last_burnt <= self.win_treshold)
         # cur_stats["win_rate"] = np.mean(cur_stats['win']) if 'win' in cur_stats.keys() else 0
         cur_stats["ep_length"] = self.t + cur_stats.get("ep_length", 0)

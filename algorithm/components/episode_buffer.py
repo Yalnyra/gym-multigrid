@@ -74,6 +74,8 @@ class EpisodeBatch:
             else:
                 self.data.transition_data[field_key] = th.zeros((batch_size, max_seq_length, *shape), dtype=dtype, device=self.device)
 
+            # print(self.data.transition_data['state'].shape)
+
     def extend(self, scheme, groups=None):
         self._setup_data(scheme, self.groups if groups is None else groups, self.batch_size, self.max_seq_length)
 
@@ -86,6 +88,7 @@ class EpisodeBatch:
 
     def update(self, data, bs=slice(None), ts=slice(None), mark_filled=True):
         slices = self._parse_slices((bs, ts))
+        # print("Cut slices ", slices)
         for k, v in data.items():
             if k in self.data.transition_data:
                 target = self.data.transition_data
@@ -102,7 +105,9 @@ class EpisodeBatch:
             dtype = self.scheme[k].get("dtype", th.float32)
             if type(v) == list:
                 v = th.tensor(np.array(v), dtype=dtype, device=self.device)
-            # self._check_safe_view(v, target[k][_slices])
+            # print("Slices shape ", target[k].shape)
+            self._check_safe_view(v, target[k][_slices])
+            # print("Slices shape ", target[k][_slices])
             target[k][_slices] = v.view_as(target[k][_slices])
 
             if k in self.preprocess:
@@ -113,6 +118,8 @@ class EpisodeBatch:
                 target[new_k][_slices] = v.view_as(target[new_k][_slices])
 
     def _check_safe_view(self, v, dest):
+        if len(v.shape) == 0:
+            return
         idx = len(v.shape) - 1
         for s in dest.shape[::-1]:
             if v.shape[idx] != s:

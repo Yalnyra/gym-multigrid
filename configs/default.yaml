@@ -51,7 +51,7 @@ reward_scalarisation: "sum"  # How to aggregate rewards to single common reward 
 seed: 3456
 eval_seed: -1
 # env:
-agents: 7
+agents: 5
 agents_inference: 5
 flashpoints: 3
 world_size: 13
@@ -62,6 +62,7 @@ obs_type: typed_one_hot
 reward_type: default
 agent_view_size: 13
 partial_obs: False
+max_steps: 25
 
 cooperative_reward: True
 
@@ -73,7 +74,7 @@ observations:
 run_id: ${name}_${agents}_${world_size}_${reward_type}_obs_${agent_view_size}
 training_type: ???
 from_scratch: True
-evaluate: False
+evaluate: True
 model_save_path: out/models/
 checkpoint: ''
 log: out/logs/

@@ -79,7 +79,7 @@ class QTranBase(nn.Module):
         ts = batch.max_seq_length
 
         states = batch["state"].reshape(bs * ts, self.state_dim)
-
+        actions = batch['actions']
         if self.arch == "coma_critic":
             if actions is None:
                 # Use the actions taken by the agents

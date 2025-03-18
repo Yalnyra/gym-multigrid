@@ -75,8 +75,8 @@ class COMALearner:
         baseline = (pi * q_vals).sum(-1).detach()
 
         # Calculate policy grad with mask
-        q_taken = th.gather(q_vals, dim=1, index=actions.reshape(-1, 1)).squeeze(1)
-        pi_taken = th.gather(pi, dim=1, index=actions.reshape(-1, 1)).squeeze(1)
+        q_taken = th.gather(q_vals, dim=1, index=actions.unsqueeze(-1).reshape(-1, 1)).squeeze(1)
+        pi_taken = th.gather(pi, dim=1, index=actions.unsqueeze(-1).reshape(-1, 1)).squeeze(1)
         pi_taken[mask == 0] = 1.0
         log_pi_taken = th.log(pi_taken)
 

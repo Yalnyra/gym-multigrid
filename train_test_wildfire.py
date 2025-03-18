@@ -49,7 +49,7 @@ def create_env(config:DictConfig, render_mode=None, inference=False):
         delta_beta=config.agent_beta_impact,
         # max_episode_steps=1,
         num_agents=num_agents,
-        max_steps=25,
+        max_steps=config.max_steps,
         size=config.world_size,
         initial_fire_size=config.flashpoints,
         cooperative_reward=config.cooperative_reward,
@@ -233,12 +233,13 @@ def test(config:DictConfig):
 
 
 def evaluate_sequential(args, runner):
+    runner.start_rec()
     for _ in range(args.episodes):
         runner.run(test_mode=True)
 
     if args.save_replay:
         runner.save_replay()
-
+    runner.stop_rec()
     runner.close_env()
 
 
@@ -261,7 +262,7 @@ def run_sequential(config: dict, logger):
                 # "group": "agents"
                 },
         "actions": {
-                    "vshape": (env_info['n_agents'],),
+                    "vshape": env_info['n_agents'],
                     # "vshape": (env_info['n_agents'], env_info['n_actions']),
                     # "group": "agents", 
                     "dtype": th.long},
@@ -269,7 +270,7 @@ def run_sequential(config: dict, logger):
         #                         # "group": "agents"
         #                         },
         "avail_actions": {
-            "vshape": (env_info["n_agents"],env_info["n_actions"],),
+            "vshape": (env_info["n_agents"],env_info["n_actions"]),
             # "vshape": (env_info["n_actions"],),
             # "group": "agents",
             "dtype": th.int,
@@ -283,7 +284,7 @@ def run_sequential(config: dict, logger):
     else:
         scheme["reward"] = {"vshape": (env_info['n_agents'],)}
     groups = {"agents": (1,args.n_agents)}
-    # apreprocess = {"actions": ("actions_onehot", [OneHot(out_dim=args.n_actions)])}
+    # preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=args.n_actions)])}
     preprocess = {}
     buffer = ReplayBuffer(
         scheme,
@@ -342,6 +343,7 @@ def run_sequential(config: dict, logger):
         if args.evaluate or args.save_replay:
             print("start eval")
             runner.log_train_stats_t = runner.t_env
+            
             evaluate_sequential(args, runner)
             logger.log_stat("episode", runner.t_env, runner.t_env)
             logger.print_recent_stats()
@@ -376,7 +378,7 @@ def run_sequential(config: dict, logger):
 
         # Execute test runs once in a while
         n_test_runs = max(1, args.test_nepisode // runner.batch_size)
-        if (runner.t_env - last_test_T) / args.test_interval >= 1.0:
+        if (runner.t_env - last_test_T) / args.valid_interval >= 1.0:
             logger.console_logger.info(
                 "t_env: {} / {}".format(runner.t_env, args.t_max)
             )
@@ -389,11 +391,12 @@ def run_sequential(config: dict, logger):
             last_time = time.time()
 
             last_test_T = runner.t_env
+            runner.start_rec()
             for _ in range(n_test_runs):
                 runner.run(test_mode=True)
-                if args.save_replay:
-                    runner.save_replay()
-
+            if args.save_replay:
+                runner.save_replay()
+            runner.stop_rec()
         if args.save_model and (
             runner.t_env - model_save_time >= args.save_model_interval
             or model_save_time == 0

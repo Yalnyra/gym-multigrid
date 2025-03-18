@@ -77,7 +77,7 @@ class NonSharedMAC:
 
     def _get_input_shape(self, scheme):
         # Divide by number of agents to get a single obs shape
-        input_shape = scheme["obs"]["vshape"] // scheme['avail_actions']['vshape'][0]
+        input_shape = scheme["obs"]["vshape"] // self.n_agents
         if self.args.obs_last_action:
             input_shape += scheme["actions_onehot"]["vshape"][0]
         if self.args.obs_agent_id:

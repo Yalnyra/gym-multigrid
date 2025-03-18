@@ -123,21 +123,22 @@ hydra:
     hydra:
     - hydra.mode=MULTIRUN
     task:
-    - algorithm=qmix,iql,vdn
+    - algorithm=qmix
     - train_epochs=100_000
     - reward=fire_adjacent
     - common_reward=True
     - experiments/team_size=ten
-    - use_rnn=True,False
-    - experiments/obs=range_six,range_ten
+    - use_rnn=True
+    - experiments/obs=range_ten,range_six
     - wandb.enabled=True
-    - seed=8001
-    - eval_seed=3456
-    - save_replay=False
+    - eval_seed=8007,2004
+    - checkpoint=qmix_10_13_fire_adjacent_obs_10
+    - save_replay=True
+    - evaluate=True
   job:
     name: train_test_wildfire
     chdir: true
-    override_dirname: algorithm=qmix,iql,vdn,common_reward=True,eval_seed=3456,experiments/obs=range_six,range_ten,experiments/team_size=ten,reward=fire_adjacent,save_replay=False,seed=8001,train_epochs=100_000,use_rnn=True,False,wandb.enabled=True
+    override_dirname: algorithm=qmix,checkpoint=qmix_10_13_fire_adjacent_obs_10,common_reward=True,eval_seed=8007,2004,evaluate=True,experiments/obs=range_ten,range_six,experiments/team_size=ten,reward=fire_adjacent,save_replay=True,train_epochs=100_000,use_rnn=True,wandb.enabled=True
     id: ???
     num: ???
     config_name: default
@@ -169,7 +170,7 @@ hydra:
       experiments/obs: default
       experiments/env_size: default
       reward: fire_adjacent
-      algorithm: vdn
+      algorithm: qmix
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: default
@@ -193,8 +194,8 @@ agilerl:
   _target_: algorithm.agilerl.train
 common_reward: true
 reward_scalarisation: mean
-seed: 8001
-eval_seed: 3456
+seed: 3456
+eval_seed: -1
 agents: 10
 agents_inference: 10
 flashpoints: 3
@@ -206,6 +207,7 @@ obs_type: typed_one_hot
 reward_type: fire_adjacent
 agent_view_size: 13
 partial_obs: false
+max_steps: 25
 cooperative_reward: true
 observations:
   false: full
@@ -213,9 +215,9 @@ observations:
 run_id: ${name}_${agents}_${world_size}_${reward_type}_obs_${agent_view_size}
 training_type: ???
 from_scratch: true
-evaluate: false
+evaluate: true
 model_save_path: out/models/
-checkpoint: ''
+checkpoint: qmix_10_13_fire_adjacent_obs_10
 log: out/logs/
 train_epochs: 100000
 memory_size: 10000
@@ -241,7 +243,7 @@ save_model_interval: ${valid_interval}
 checkpoint_path: ''
 render: false
 load_step: 0
-save_replay: false
+save_replay: true
 local_results_path: ${model_save_path}
 gamma: 0.99
 batch_size: 32
@@ -261,6 +263,7 @@ obs_last_action: false
 repeat_id: 1
 label: default_label
 hypergroup: null
+name: qmix
 action_selector: epsilon_greedy
 epsilon_start: 1.0
 epsilon_finish: 0.05
@@ -273,8 +276,10 @@ standardise_rewards: true
 agent_output_type: q
 learner: q_learner
 double_q: true
+mixer: qmix
 use_rnn: true
-mixer: vdn
-name: vdn
+mixing_embed_dim: 32
+hypernet_layers: 2
+hypernet_embed: 64
 experiments:
   obs: {}
