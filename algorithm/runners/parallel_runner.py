@@ -249,34 +249,38 @@ class ParallelRunner:
 
     def _log(self, returns, stats, prefix):
         if self.args.common_reward:
-            self.logger.log_stat(prefix + "return_mean", np.mean(returns), self.t_env)
-            self.logger.log_stat(prefix + "return_std", np.std(returns), self.t_env)
+            self.logger.log_stat(prefix + "mean_reward", np.mean(returns), self.t_env)
+            self.logger.log_stat(prefix + "std_of_mean_reward", np.std(returns), self.t_env)
         else:
             for i in range(self.args.n_agents):
                 self.logger.log_stat(
-                    prefix + f"agent_{i}_return_mean",
+                    prefix + f"agent_{i}_reward",
                     np.array(returns)[:, i].mean(),
                     self.t_env,
                 )
                 self.logger.log_stat(
-                    prefix + f"agent_{i}_return_std",
+                    prefix + f"agent_{i}_std_reward",
                     np.array(returns)[:, i].std(),
                     self.t_env,
                 )
             total_returns = np.array(returns).sum(axis=-1)
             self.logger.log_stat(
-                prefix + "total_return_mean", total_returns.mean(), self.t_env
+                prefix + "total_mean_reward", total_returns.mean(), self.t_env
             )
             self.logger.log_stat(
-                prefix + "total_return_std", total_returns.std(), self.t_env
+                prefix + "std_of_total_mean_reward", total_returns.std(), self.t_env
             )
         returns.clear()
 
         for k, v in stats.items():
             if k != "n_episodes":
                 self.logger.log_stat(
-                    prefix + k + "_mean", v / stats["n_episodes"], self.t_env
+                    prefix + "mean_" + k, v / stats["n_episodes"], self.t_env
                 )
+        # self.logger.log_stat(
+        #             prefix + "win_rate", np.mean(stats['win']), self.t_env
+        #         )
+        
         stats.clear()
 
 

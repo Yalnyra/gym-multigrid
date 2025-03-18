@@ -1,3 +1,5 @@
-env:
-  partial_obs: True
-  agent_view_size: 10
+# @package _global_
+
+# env:
+partial_obs: True
+agent_view_size: 10

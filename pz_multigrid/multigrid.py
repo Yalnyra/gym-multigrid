@@ -591,7 +591,7 @@ class MultiGridEnv(pz.ParallelEnv):
         # Encode the partially observable view into a numpy array
         obs = [
             grid.encode_for_agents(
-                self.world, [grid.width // 2, grid.height - 1], vis_mask
+                [grid.width // 2, grid.height - 1], vis_mask
             )
             for grid, vis_mask in zip(grids, vis_masks)
         ]
