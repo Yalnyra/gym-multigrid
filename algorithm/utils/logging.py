@@ -82,7 +82,7 @@ class Logger:
                 "alpha_transition",
                 "beta_transition", 
                 "agent_beta_impact",
-                "obs_type", "partial_obs", "agent_view_size", "name"
+                "obs_type", "partial_obs", "agent_view_size"
                 ]
         self.config_hash = sha256(
             json.dumps(
@@ -91,7 +91,8 @@ class Logger:
             ).encode("utf8")
         ).hexdigest()[-10:]
 
-        group_name = "_".join([alg_name, self.config_hash])
+        group_name = "_".join([str(config["agents"]), str(config['world_size']), "obs", str(config['agent_view_size']), self.config_hash])
+        # group_name = self.config_hash
 
         self.wandb = wandb.init(
             entity=team_name,
@@ -112,6 +113,8 @@ class Logger:
         self.console_logger.info(f"{self.wandb.id}")
         self.console_logger.info("*******************")
 
+        self.wandb.log({"test": 1})
+
         # accumulate data at same timestep and only log in one batch once
         # all data has been gathered
         self.wandb_current_t = -1
@@ -129,10 +132,10 @@ class Logger:
             self.tb_logger(key, value, t)
 
         if self.use_wandb:
-            if self.wandb_current_t != t and self.wandb_current_data:
-                # self.console_logger.info(
-                #     f"Logging to WANDB: {self.wandb_current_data} at t={self.wandb_current_t}"
-                # )
+            if self.wandb_current_data and self.wandb_current_t != t:
+                self.console_logger.info(
+                    f"Logging to WANDB: {self.wandb_current_data} at t={self.wandb_current_t}"
+                )
                 self.wandb.log(self.wandb_current_data, step=self.wandb_current_t)
                 self.wandb_current_data = {}
             self.wandb_current_t = t

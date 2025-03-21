@@ -8,6 +8,7 @@ from gym_multigrid.utils.misc import save_frames_as_gif
 import torch as th
 from algorithm.utils.logging import Logger
 from wandb import Video
+
 import os
 
 
@@ -62,7 +63,7 @@ class EpisodeRunner:
 
     def save_replay(self):
         path = os.path.join(self.args.log,self.args.run_id+'-'+str(self.t)+".gif")
-        self.env.save_replay(self.args.log, self.args.run_id, self.t_env)
+        self.env.save_replay(self.args.log, self.args.run_id, self.t)
         if self.args.wandb['enabled']:
             try:
                 self.logger.wandb.log({"video": Video(path, format="gif")})
@@ -110,19 +111,13 @@ class EpisodeRunner:
 
             # Pass the entire batch of experiences up till now to the agents
             # Receive the actions for each agent at this timestep in a batch of size 1
-            outputs, actions = self.mac.select_actions(
+            actions = self.mac.select_actions(
                 self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode
             )
             _, reward, terminated, truncated, env_info = self.env.step(actions.squeeze().cpu().numpy())
             terminated = terminated[0] or truncated[0]
             if self.args.save_replay:
                 self.env.render()
-            if test_mode:
-                # burnt trees and unburnt trees
-                for k, v in env_info[0].items():
-                    self.logger.log_stat(
-                        log_prefix + str(k), v, self.t_env
-                    )
             
             post_transition_data = {
                 "actions": actions.unsqueeze(0),
@@ -154,7 +149,7 @@ class EpisodeRunner:
         self.batch.update(last_data, ts=self.t)
 
         # Select actions in the last stored state
-        outputs, actions = self.mac.select_actions(
+        actions = self.mac.select_actions(
             self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode
         )
         self.batch.update({"actions": actions.unsqueeze(0)}, ts=self.t)
@@ -180,8 +175,8 @@ class EpisodeRunner:
             self.t_env += self.t
 
         cur_returns.append(episode_return)
-
-        if test_mode and (len(self.test_returns) == self.args.test_nepisode):
+        # print(self.test_returns)
+        if test_mode:
             self._log(cur_returns, cur_stats, log_prefix)
         elif self.t_env - self.log_train_stats_t >= self.args.runner_log_interval:
             self._log(cur_returns, cur_stats, log_prefix)
@@ -194,6 +189,7 @@ class EpisodeRunner:
         return self.batch
 
     def _log(self, returns, stats, prefix):
+        print("Logging stat:", returns, stats, prefix)
         if self.args.common_reward:
             self.logger.log_stat(prefix + "mean_reward", np.mean(returns), self.t_env)
             self.logger.log_stat(prefix + "std_of_mean_reward", np.std(returns), self.t_env)
@@ -217,7 +213,12 @@ class EpisodeRunner:
                 prefix + "std_of_total_mean_reward", total_returns.std(), self.t_env
             )
         returns.clear()
-
+        self.logger.log_stat(
+                prefix + "burnt trees", np.mean(stats['burnt trees']), self.t_env
+            )
+        self.logger.log_stat(
+            prefix + "unburnt trees", np.mean(stats['unburnt trees']), self.t_env
+        )
         for k, v in stats.items():
             if k != "n_episodes":
                 self.logger.log_stat(

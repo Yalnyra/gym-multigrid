@@ -4,10 +4,14 @@ import yaml
 import os
 
 import numpy as np
+import seaborn as sns
+import shutil
 # from wandb import Api
 from wandb.sdk.wandb_run import Run
 from algorithm.utils.logging import sha256, squash_info
-
+from benchmarl.eval_results import load_and_merge_json_dicts, Plotting
+from marl_eval.utils.diagnose_data_errors import DiagnoseData
+from matplotlib import pyplot as plt
 api = wandb.Api()
 entity, project = "vinokur-eg-", "Wildfire"
 
@@ -22,23 +26,37 @@ FIELDS = ['ID',
           'batch_size',
 # Second - at each equal step in history collect into a separate table these metrics
 # HISTORY = [
-        'train/mean_reward', 'train/mean_burnt trees', 'eval/burnt trees', 'pg_loss', 'agent_0_0_critic_loss',
+        
         #    'loss',
-          'eval/mean_reward', #avg over 5 runs
-          'eval/std_of_mean_reward',
-          'eval/burnt trees', #avg over 5 runs
-          'eval/mean_burnt trees',
-          'eval/mean_ep_length',
         #    'q_taken_mean', 
         #    'td_error', 
            '_total_timesteps',
-           'pg_loss',
-          '_runtime']
-# Export video
+          '_runtime'
+          ]
 
-# Convert to a expertiment dict for each eval step (Optuonal)
+HISTORY = [
+          '_step',
+        #   'train/mean_burnt trees',
+        #   'train/mean_reward',
+        #   'train/std_of_mean_reward',
+        #   'train/burnt trees', #avg over 5 runs
+        #   'train/mean_ep_length',
+        # 'train/burnt_trees', 
+        # 'pg_loss',
+        # 'agent_0_0_critic_loss'
+        'eval/burnt_trees',
+        'eval/mean_reward', #avg over 5 runs
+        #   'eval/std_of_mean_reward',
+        #   'eval/burnt trees', #avg over 5 runs
+        #   'eval/mean_burnt trees',
+        #   'eval/mean_ep_length',
 
-def _load_data_from_wandb(ids=None, metric=None):
+
+]
+
+AGENTS = [5, 10, 15, 20]
+
+def _load_data_from_wandb(ids=None, metric=None, date_after="2025-02-28##"):
     """Helper function for pulling results data from logs
 
     Args:
@@ -52,82 +70,106 @@ def _load_data_from_wandb(ids=None, metric=None):
     """
     # The given folder will contain several sub-folders with random hashes like "1a8fdsk3"
     # Within each sub-folder is the data we need
-    runs = api.runs(entity + "/" + project, order='-created_at', filters={"$and": [{"created_at": {"$gt": "2025-03-10##"}}]})
+    runs = api.runs(entity + "/" + project, order='-created_at', filters={"$and": [{"created_at": {
+                                                                                        "$gt": date_after
+                                                                                        }
+                                                                                        }]})
     run: Run
     data = []
+    fields = FIELDS
+    fields.extend(HISTORY)
+
+
+    
     for run in runs:
-        if run.state != 'failed':
-            # run_data = {field: run.summary.get(field, None) for field in FIELDS}
-            summary = dict(run.summary._json_dict)
-            if len(summary) <= 1:
-                continue
-            history_data: pd.Series = run.history(pandas=True)
-            print("Did we find it: ", history_data.get('eval/burnt trees'))
-            
-            if history_data.get('eval/burnt trees') is None:
-                continue
-            # if len(history_data) == 0:
-            #     continue
-            # run_data.update({field: history_data.get(field, None) for field in FIELDS})
-            print(run.name)
-            run_data = {}
-            run_data.update({field: summary.get(field, None) for field in FIELDS if summary.get(field, None) is not None})
-            run_data.update({
-                'ID': run.id,
-                'group': run.group,
-                'name': run.name,
-                'seed': run.config.get('seed', None),
-                'eval_seed': run.config.get('eval_seed', None),
-                'job_type': run.job_type,
-            })
-            run_data.update({field: run.config.get(field, None) for field in FIELDS if run.config.get(field, None) is not None})
-            # for _, row in history_data.iterrows():
-            #     row.filter(FIELDS)
-            #     run_data.update(row.to_dict())
-            # print(history_data.tail(1).to_dict())
-            hist_dict = history_data.tail(1)
-            hist_dict.dropna()
-            hist_dict = history_data.to_dict()
-            hist_dict = {field: hist_dict.get(field)[history_data.last_valid_index()] for field in FIELDS if hist_dict.get(field) is not None}
-            print(hist_dict)
-            # exit()
-            run_data.update(hist_dict)
-            
-            
+        if run.state == 'failed':
+            continue
+        # run_data = {field: run.summary.get(field, None) for field in FIELDS}
+        summary = dict(run.summary._json_dict)
 
-            if 'video' in run.config:
-                print("Video found:", run.config['video']['path'])
-                artifact = run.use_artifact(run.config['video']['path'])
-                artifact_dir = artifact.download()
-                print("loading video to :", artifact_dir)
+        
 
-            # if 'config.yaml' in run.config:
-            #     artifact = run.use_artifact(run.config['config.yaml'])
-            #     artifact_dir = artifact.download()
-            #     print("loading yaml to :", artifact_dir)
-            #     with open(os.path.join(artifact_dir, 'config.yaml')) as f:
-            #         config_data = yaml.safe_load(f)
-            #         run_data.update(config_data)
-            
-            data.append(run_data)
-            # last_step_metrics = run.history(keys=['_runtime', '_timestamp', '_step'], pandas=True).iloc[-1].to_dict()
-            system_metrics:pd.DataFrame = run.history(
-                                        keys=[
-                                         "system.proc.memory.rssMB", 
-                                          "system.disk.\.usageGB", 
-                                          "system.proc.cpu.threads",
-                                          ],
-                                          stream='system', pandas=True)
-            if len(system_metrics) != 0:
+        if not 'eval/mean_reward' in run.summary and not 'train/mean_reward' in run.summary:
+            continue
+    
+        # if run.summary.get('eval/mean_ep_length') <= 1:
+        #     continue
+        history_data: pd.Series = run.history(pandas=True) 
+                                            #    index=['_step'], 
+                                            #    columns=HISTORY[1:]
+        if history_data.get('eval/burnt trees') is None and history_data.get('train/burnt trees'):
+            continue
+        history_data.filter(items=HISTORY)
 
-                print("System: ", system_metrics.keys())
-            # run_data.update(last_step_metrics)
-                run_data.update(system_metrics)
-        # .summary contains output keys/values for
-        # metrics such as accuracy.
-        # .config contains the hyperparameters.
-        #  We remove special values that start with _.
-        # config_list.append({k: v for k, v in run.config.items() if not k.startswith("_")})
+        history_data.dropna()
+        # if num_steps != expected_steps:
+        #     # Skip runs with differing number of steps.
+        #     continue
+
+        # Prepare per-step data and aggregate absolute metrics.
+        steps_dict = {}
+        
+        print("whole history: ",history_data.keys())
+        history_data = history_data.interpolate(method='index',) #'cubicspline'
+        # run_data.update({field: history_data.get(field, None) for field in FIELDS})
+        print(run.name)
+        run_data = {}
+        run_data.update({field: summary.get(field, None) for field in FIELDS if summary.get(field, None) is not None})
+        run_data.update({
+            'ID': run.id,
+            'group': run.group,
+            'name': run.name,
+            'algo': run.config.get('name', None),
+            'team size': run.config.get('agents', -5),
+            'eval team size': run.config.get('agents_inference', -5),
+            'seed': run.config.get('seed', None),
+            'eval_seed': run.config.get('eval_seed', None),
+            'job_type': run.job_type,
+        })
+        run_data.update({field: run.config.get(field, None) for field in fields if run.config.get(field, None) is not None})
+        # for _, row in history_data.iterrows():
+        #     row.filter(FIELDS)
+        #     run_data.update(row.to_dict())
+        # print(history_data.tail(1).to_dict())
+        hist_dict = history_data.tail(1)
+        hist_dict.dropna()
+        hist_dict = history_data.to_dict()
+        hist_dict = {field: hist_dict.get(field)[history_data.last_valid_index()] for field in fields if hist_dict.get(field) is not None}
+        print(hist_dict)
+        # exit()
+        run_data.update(hist_dict)
+        
+        
+
+        # if 'video' in run.config:
+        #     print("Video found:", run.config['video']['path'])
+        #     artifact = run.use_artifact(run.config['video']['path'])
+        #     artifact_dir = artifact.download()
+        #     print("loading video to :", artifact_dir)
+
+        # if 'config.yaml' in run.config:
+        #     artifact = run.use_artifact(run.config['config.yaml'])
+        #     artifact_dir = artifact.download()
+        #     print("loading yaml to :", artifact_dir)
+        #     with open(os.path.join(artifact_dir, 'config.yaml')) as f:
+        #         config_data = yaml.safe_load(f)
+        #         run_data.update(config_data)
+        
+        data.append(run_data)
+        # last_step_metrics = run.history(keys=['_runtime', '_timestamp', '_step'], pandas=True).iloc[-1].to_dict()
+        system_metrics:pd.DataFrame = run.history(
+                                    keys=[
+                                        "system.proc.memory.rssMB", 
+                                        "system.disk.\.usageGB", 
+                                        "system.proc.cpu.threads",
+                                        ],
+                                        stream='system', pandas=False)
+        # if len(system_metrics) != 0:
+
+        #     print("System: ", system_metrics.keys())
+        # # run_data.update(last_step_metrics)
+        run_data.update(system_metrics)
+
 
     runs_df = pd.DataFrame(
         data
@@ -141,18 +183,183 @@ def _load_data_from_wandb(ids=None, metric=None):
 
     runs_df.to_csv(f"{project}_wandb.csv",index=False)
     runs_df.to_excel(f"{project}_wandb.xlsx", 'sheet_name=Format ',index=False)
-    runs_df.to_json(f'{project}_wandb.json', orient='records')
+    runs_df.to_json(f'{project}_wandb.json', orient='records', indent=2, )
    
-   
-   # for subfolder in folder:
-    #     # data = pd.read_csv(f'{os.path.join(folder, subfolder.summa, "results.csv")}')
+
+# Convert to a expertiment dict for each eval step 
+
+def load_marl_eval_history_data(equal_steps=None, output_filename='marl_eval_raw.json', algos=[], job_type='test', date_after="2025-03-12##"):
+    """
+    Use wandb API to load run history data for runs that have an equal number of eval steps.
+    Formats the data into a nested dictionary with this structure:
+      {
+        "env": {              # equals project name
+          "task": {           # equals run.group (or a default if missing)
+             "algo": {        # equals run.config.get('algo') (or 'algo_unknown')
+                "run_id": {
+                    "STEP_1": { "step_count": 10006, "return": [1,2,3,4], "win_rate": [0.8] },
+                    "STEP_2": { ... },
+                    "STEP_3": { ... },
+                    "absolute_metrics": { "return": [...], "win_rate": [...] }
+                },
+                ...
+             }
+          }
+        }
+      }
+
+    Args:
+        equal_steps (int): Only process runs that have exactly this number of history steps.
+                           If None, the first valid run defines the expected number.
+        output_filename (str): JSON output filename.
+    """
+    import json
+    data = {}
+    runs = api.runs(entity + "/" + project, order='-created_at',
+                    filters={
+                        "$and": [
+                            {"created_at": {"$lt": "2025-03-12##","$gt": "{}".format(date_after)}},
+                            # {"job_type": job_type}
+                            # {"summary_metrics.eval.mean_reward": {"$ne": None} },
+                                 ],
+                        # "$or": [
+                        #     # {"config.name": "vdn"},
+                        #     # {"config.name": "iql"},
+                        #     # {"config.name": "qmix"},
+                        # ],
+                        },
+                    )
+    expected_steps = equal_steps
+    samples = expected_steps if expected_steps is not None else 25 
+    # Initial list
+    allowed_steps = list()
+    steps_len = []
+    for run in runs:
+        
+        print(run.id)
+        print(run.name)
+        print(run.job_type)
+        if job_type is not None and run.job_type != job_type:
+            continue
+        # print(run._metadata['created_at'])
+        print(run.config.get("agent_view_size"))
+        if not 'eval/mean_reward' in run.summary:
+            continue
+        
+        if run.summary.get('eval/mean_ep_length', 0) <= 1:
+            continue
+        history_data: pd.Series = run.history(samples=samples, pandas=True) 
+                                            #    index=['_step'], 
+                                            #    columns=HISTORY[1:]
+        print(history_data.head(2))
+        history_data.filter(items=HISTORY)
+        print(history_data.head(2))
+        # history_data.dropna()
+
+        if not any(history_data.notna()):
+            continue
+        # if history_data.get("eval/mean_ep_length", [1])[0] == 1:
+        #     continue
+        print(history_data.values)
+        num_steps = len(history_data)
+        steps_len.append(history_data.size)
+        # If we haven't set expected_steps, use the first valid run as our baseline.
+        if expected_steps is None:
+            expected_steps = num_steps
+
+        # if num_steps != expected_steps:
+        #     # Skip runs with differing number of steps.
+        #     continue
+
+        # Prepare per-step data and aggregate absolute metrics.
+        steps_dict = {}
+        
+        print("whole history: ",history_data.keys())
+        history_data = history_data.interpolate(method='index',) #'cubicspline'
+        # for i, row in history_data.enumerate()
+        for i, row in history_data.iterrows():
 
 
-    #     if step is not None and step_metric is not None:
-    #         data = [data[data[step_metric] == step][metric].tolist()[0]]
+            step_label = f"STEP_{i+1}"
+            # print(row.shape)
+            # Assume keys "step_count", "return", and "win_rate" exist in history.
+            row_items = {field: row.get(field, None) for field in HISTORY if row.get(field, None) is not None}
+            # ret = row.get('return', None)
+            # win_rate = row.get('win_rate', None)
+            # Ensure these are lists.
+            steps_dict[step_label] = {
+            }
+            print("Extracted: ", row_items.values())
+            for k, v in row_items.items():
+            # Nest a scalar key into a list
+                print(type(v))
+                if pd.notna(v):
+                    if k != '_runtime' and i not in allowed_steps:
+                        allowed_steps.append(i)
+                    steps_dict[step_label][k] = v
+                    # row_items[k] = [v]
+                
 
-    #     else:
-    #         data = data[metric].tolist()
+        # Determine keys for env, task (group) and algo.
+        env_key = project  # project name as environment.
+        # task_key = run.group if run.group is not None else "default"
+        # TODO implement get_task_group method
+        task_key = 'default'
+        algo_key = run.config.get('name', 'algo_unknown')
+        run_id = str(run.name)
+
+        # Nest the output data.
+        data.setdefault(env_key, {})\
+            .setdefault(task_key, {})\
+            .setdefault(algo_key, {})[run_id] = {}
+        data[env_key][task_key][algo_key][run_id].update(steps_dict)
+        # data[env_key][task_key][algo_key][run_id]["absolute_metrics"] = abs_metrics
+
+
+    print("Existing steps: ", np.unique(allowed_steps))
+    print("min Num of steps", min(steps_len))
+
+
+    # Dump the nested dictionary to JSON.
+    with open(output_filename, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def get_run_group(config):
+    pass
+
+
+def plot_history_data(data, metrics, tasks=None):
+    """
+    Plot history data for different metrics across different runs.
+    Optionally separate graphs for different tasks.
+    """
+    for env, env_data in data.items():
+        for task, task_data in env_data.items():
+            if tasks and task not in tasks:
+                continue
+            fig, axes = plt.subplots(1, len(metrics), figsize=(10, 6))
+            for i, ax in enumerate(axes):
+                
+                for algo, algo_data in task_data.items():
+                    for run_id, run_data in algo_data.items():
+                        # steps = sorted(run_data.keys())
+                        # values = [step.get(metric, np.nan) for step in run_data.keys()]
+                        values = [run_data[step].get(metrics[i], np.nan) for step in run_data.keys()]
+                        steps = [run_data[step]['_step'] for step in run_data.keys()]
+                        # at least 3 data points
+                        if values.count(np.nan) < len(values) - 3:
+                            ax.plot(steps, values, label=f'{algo} - {run_id}')
+                ax.xlabel('Steps')
+                ax.ylabel(metrics[i])
+                ax.title(f'{metrics[i]} over Steps for Task: {task}')
+            fig.legend(bbox_to_anchor=(1.05, 1),
+                        loc='bottom left', borderaxespad=0.)
+            plt.grid(alpha=0.3)
+            plt.show()
+    # df = pd.concat(hist_list, ignore_index=True)
+    # df = df.query("`val/loss` != 'NaN'")
+
 
 def _load_data_from_subfolder(folder, metric, step=None, step_metric=None):
     """Helper function for pulling results data from logs
@@ -183,151 +390,298 @@ def _load_data_from_subfolder(folder, metric, step=None, step_metric=None):
 
     return results
 
+# apply seaborne theme globally
+sns.set_theme()
 
-def make_agg_metrics_intervals(folders, algos, metric, step=None, step_metric=None):
-    """Pulls results for the 'Aggregate metrics with 95% Stratified Bootstrap CIs' plot
-    Can also be used for "Performance Profiles" plot
-
-    Below is an example usage for this function:
-        make_agg_metrics_intervals(
-            folders=[folder, folder, folder, folder],
-            algos=['ac', 'ac', 'dqn', 'dqn'],
-            metric=['mean_reward', 'mean_reward', 'mean_reward', 'mean_reward'],
-            step=[240, 240, 500, 500],
-            step_metric=['environment_steps', 'environment_steps', 'updates', 'updates']
-        )
-
-    Shape of the output data is {'algo_1': (n_runs x n_envs), ..., 'algo_j': (n_runs x n_envs}
-
-    Args:
-        folders (List[str]):
-        algos (List[str]):
-        metric (List[str]):
-        step (List[int]):
-        step_metric (List[str]):
-
-    Returns:
-        Dict of performance matrices
-    """
-    # For the interval estimates plot, we need performance at a specific point during training/evaluation
-    if step is None:
-        raise ValueError('For interval plots, a specific step must be specified')
-    if step_metric is None:
-        raise ValueError('For interval plots, a specific step_metric must be specified')
-
-    # Process for reading in the data
-    results = {}
-
-    for i in range(len(folders)):
-        data = _load_data_from_subfolder(os.path.join(folders[i], algos[i]), metric[i], step[i], step_metric[i])
-
-        if algos[i] not in results.keys():
-            results[algos[i]] = []
-
-        results[algos[i]].append(data)
-
-    # Now we need to transpose the pulled results into results matrices. For specific shape, see function docstring
-    results_T = {}
-
-    for algo in results.keys():
-        pulled_results = results[algo]
-        results_T[algo] = np.array(pulled_results).T[0]
-
-    return results_T
+FONTSIZE = 20 # 16
+TICK_FONTSIZE = 16
+matplotlib.rc('font', size=FONTSIZE)
+matplotlib.rc('axes', titlesize=FONTSIZE, labelsize=FONTSIZE)
+matplotlib.rc('xtick', labelsize=TICK_FONTSIZE)
+matplotlib.rc('ytick', labelsize=TICK_FONTSIZE)
+matplotlib.rc('legend', fontsize=FONTSIZE)
 
 
-def make_agg_metrics_pxy(folders, algos, metric, step=None, step_metric=None):
-    """Pulls results for the 'Probability of Improvement' plot
+def glob_re(pattern, strings):
+    '''Given a list of strings, returns those that contain the regex pattern'''
+    return filter(re.compile(pattern).search, strings)
 
-    Below is an example usage for this function:
-        make_agg_metrics_pxy(
-            folders=[folder, folder, folder, folder],
-            algos=['ac', 'ac', 'dqn', 'dqn'],
-            metric=['mean_reward', 'mean_reward', 'mean_reward', 'mean_reward'],
-            step=[240, 240, 500, 500],
-            step_metric=['environment_steps', 'environment_steps', 'updates', 'updates']
-        )
+def compute_figure_size(num_subfigs): 
+    if num_subfigs == 1: 
+        figsize = (6.5, 6.0)
+    elif num_subfigs ==4: 
+        figsize = (5.0*num_subfigs, 5.2)
+    else:
+        figsize = (5.0*num_subfigs, 6.0)
+    return figsize       
 
-    Shape of the output data is {'algo_1,algo_2': ((n_runs x n_envs), (n_runs x n_envs)), ...}
+def generate_summary(eval_paths,
+                     remove_duplicates=False):
+    '''Assumption: eval path is a json file'''
+    eval_path_res = {
+        "test_return_mean": {},
+        "test_return_std": {},
+        "test_ep_length_mean": {},
+        "seed_paths": {} # record seeds involved in computation
+    }
 
-    Args:
-        folders (List[str]):
-        algos (List[str]):
-        metric (List[str]):
-        step (List[int]):
-        step_metric (List[str]):
+    for p in eval_paths: 
+        seedi, seedj, n = get_seed_pair(p)
+        seed_pair_str = f"seedi={seedi}_seedj={seedj}"
+        eval_name = f"{seed_pair_str}_n-{n}"
+        for k, stats_dict in eval_path_res.items():
+            if seed_pair_str not in stats_dict:
+                stats_dict[seed_pair_str] = []
+                            
+        if eval_name in eval_path_res["seed_paths"][seed_pair_str]:
+            if remove_duplicates:
+                shutil.rmtree(os.path.dirname(os.path.dirname(p)))
+                print(f"Warning: removing duplicate eval {p}")
+            else:
+                print("Warning: duplicate eval detected: ", p)
+            continue
+        else:
+            eval_path_res["seed_paths"][seed_pair_str].append(eval_name)
+            
+        with open(p) as f:
+            eval_info = json.load(f)
+            mean = eval_info["test_return_mean"][0]["value"]
+            std = eval_info["test_return_std"][0]["value"]
+            ep_len=  eval_info["test_ep_length_mean"][0]
 
-    Returns:
-        Dicts of comparative performance matrices
-    """
-    # First pulling the metrics as we would for other single-value plots
-    agg_metrics = make_agg_metrics_intervals(folders=folders, algos=algos, metric=metric,
-                                             step=step, step_metric=step_metric)
+            eval_path_res["test_return_mean"][seed_pair_str].append(mean)
+            eval_path_res["test_return_std"][seed_pair_str].append(std)
+            eval_path_res["test_ep_length_mean"][seed_pair_str].append(ep_len)
+    # seed_pair_means = [np.mean(eval_path_res["test_return_mean"][seed_pair_str]) for seed_pair_str in eval_path_res["test_return_mean"]]
+    # seed_pair_std_errors = np.std(seed_pair_means) / np.sqrt(n_trials)
 
-    # Now building out the combinatorics dict
-    results = {}
+    # compute standard error of the return mean from the std dev
+    # unpack all return means into a single list
+    returns = []
+    for seed_pair_str in eval_path_res["test_return_mean"]:
+        returns.extend(eval_path_res["test_return_mean"][seed_pair_str])
+    n_samples = len(returns)
+    std_errors = np.std(returns) / np.sqrt(n_samples)
 
-    for i in range(len(algos)):
-        for j in range(len(algos)):
-            if i == j:
-                continue
-            results[f'{algos[i]},{algos[j]}'] = (agg_metrics[algos[i]], agg_metrics[algos[j]])
+    summary = {
+        "mean": np.mean(returns),
+        "ci": 1.96 * std_errors
+    }
+    # return summary stats and raw eval path results
+    return summary, returns
 
-    return results
+def check_seed_pair_equal(eval_name):
+    '''Given an eval name, check if the seeds of algo1 and algo2 are the same'''
+    # last seed is the eval seed
+    seed_pair = re.findall(r"seed=(\d+)", eval_name)[:2]
+    if seed_pair[0] == seed_pair[1]:
+        return True
+    return False
 
-
-def make_agg_metrics_efficiency(folders, algos, metric):
-    """Pulls results for the 'Aggregate metrics with 95% Stratified Bootstrap CIs' plot
-    Can also be used for "Performance Profiles" plot
-
-    Below is an example usage for this function:
-        make_agg_metrics_efficiency(
-            folders=[folder, folder, folder, folder],
-            algos=['ac', 'ac', 'dqn', 'dqn'],
-            metric=['mean_reward', 'mean_reward', 'mean_reward', 'mean_reward'],
-        )
-
-    Shape of the output data is {'algo_1': (n_runs x n_envs x n_steps), ...,}
-
-    Args:
-        folders (List[str]):
-        algos (List[str]):
-        metric (List[str]):
-        step (List[int]):
-        step_metric (List[str]):
-
-    Returns:
-        Dict of performance matrices
-    """
-    step = [None for _ in range(len(algos))]
-    step_metric = [None for _ in range(len(algos))]
-
-    # Process for reading in the data
-    results = {}
-
-    for i in range(len(folders)):
-        data = _load_data_from_subfolder(os.path.join(folders[i], algos[i]), metric[i], step[i], step_metric[i])
-
-        if algos[i] not in results.keys():
-            results[algos[i]] = []
-
-        results[algos[i]].append(data)
-
-    results_T = {}
-
-    for algo in results.keys():
-        pulled_results = results[algo]
-
-        n_envs = len(pulled_results)
-        n_runs = len(pulled_results[0])
-        n_steps = len(pulled_results[0][0])
+def get_seed_pair(eval_name):
+    '''Given an eval name, find seeds in the eval name'''
+    # last seed is the eval seed
+    seed_pair = re.findall(r"seed=(\d+)", eval_name)[:2]
+    n = re.findall(r"n-(\d+)", eval_name)[0]
+    return seed_pair[0], seed_pair[1], n
 
 
-        results_T[algo] = np.array(pulled_results).reshape((n_runs, n_envs, n_steps))
+def plot_single_exp(ax, exp_dfs, baselines=None,
+                    stat_name=None, 
+                    xlabel=None, ylabel=None,
+                    yaxis_lims=None, xaxis_lims=None, 
+                    plot_title=None):
+    baseline_palette = list(sns.color_palette("Oranges", as_cmap=False, n_colors=7).as_hex())
+    open_palette = list(sns.color_palette("mako", as_cmap=False, n_colors=12).as_hex())
+    default_palette = sns.color_palette("colorblind", as_cmap=True)
 
-    return results_T
+    for i, (exp_name, exp_df) in enumerate(exp_dfs.items()):
+        if "baseline" in exp_name: 
+            color = baseline_palette.pop()
+            baseline_palette.pop()
+        elif "open" in exp_name: 
+            color = open_palette[i*2 + 3]
+        else: 
+            color = default_palette[i]
+        g = sns.lineplot(data=exp_df, 
+                     x="ts", y="test_battle_won_mean" if stat_name is None else stat_name,
+                     errorbar=('ci', 95), # "sd", 
+                     ax=ax, label=exp_name, 
+                     color=color,
+                     legend=False
+                    )
+    g.set(xlabel=xlabel, ylabel=ylabel, title=plot_title, ylim=yaxis_lims, xlim=xaxis_lims)
+    if baselines is not None:
+        color_list = ["darkslategray", "slateblue", "darkslateblue", "indigo", "darkviolet"]
+        # from https://matplotlib.org/stable/gallery/lines_bars_and_markers/linestyles.html
+        linestyle_list = [
+             ('densely dashed',        (0, (5, 1))),
+             ('loosely dotted',        (0, (1, 10))),
+             ('dotted',                (0, (1, 1))),
+             ('loosely dashed',        (0, (5, 10))),
+             ('long dash with offset', (5, (10, 3))),
+              ]
+        for i, (baseline_nm, baseline_data) in enumerate(baselines.items()):
+            bs_mean, bs_std = baseline_data
+            ax.axhline(y=bs_mean, xmin=0.01, xmax=0.99, 
+                       color=color_list[0], # figure_colors[i+1], 
+                       linestyle= linestyle_list.pop(-1)[1], 
+                       label=baseline_nm
+                       )
+
+def plot_learning_curves(exp_dfs:dict, 
+                     savename:str, 
+                     plot_title:str=None, 
+                     stat_name:str=None,
+                     legend=True,
+                     legend_cols=4,
+                     legend_loc=(1.0, -0.25),
+                     baselines:dict=None, 
+                     xaxis_lims=None,
+                     yaxis_lims=None,
+                     save=False, 
+                     savedir="figures/"):
+    '''
+    baselines: a dict with format {exp_name: [mean, std]}. will be plotted as horizontal line
+    '''
+    _, axis = plt.subplots(1, 1, figsize=(7, 5)) # figsize argument
+
+    plot_single_exp(axis, exp_dfs, baselines,
+                    stat_name=stat_name, 
+                    xlabel="Timesteps", 
+                    ylabel=stat_name.replace("_", " ").title() if stat_name is not None else "Mean Test Return",
+                    yaxis_lims=yaxis_lims, xaxis_lims=xaxis_lims, 
+                    plot_title=plot_title,
+                    )
+
+    if legend:
+        plt.legend(bbox_to_anchor=legend_loc, 
+                   borderaxespad=0.,
+                   ncol=legend_cols,
+                  )
+    else:
+        leg = axis.get_legend()
+        leg.remove()
+    
+    if save:
+        if not os.path.exists(savedir):
+            os.mkdir("figures")            
+        savepath = os.path.join(savedir, savename + ".pdf")
+        
+        print(f"Saving to {savepath}")
+        plt.savefig(savepath, bbox_inches="tight")
+    plt.show()
+
+
+def plot_learning_curves_all(exp_dict:dict, 
+                     savename:str, 
+                     plot_suptitle:str=None, 
+                     show_subplot_task_name=True,
+                     stat_name:str=None,
+                     legend=True,
+                     legend_cols=4,
+                     legend_loc=(1.0, -0.25),
+                     baselines:dict=None, 
+                     xaxis_lims=None,
+                     yaxis_lims=None,
+                     save=False, 
+                     savedir="figures/"):
+    '''
+    exp_dict: a dict with format {task: {exp_name: exp_df}}
+    baselines: a dict with format {task: {exp_name: [mean, std]}}. 
+    will be plotted as horizontal line
+    '''
+    ntasks =len(exp_dict)
+    fig, axes = plt.subplots(1, ntasks, 
+                             figsize=(6*ntasks, 4.3), 
+                            squeeze=True) # figsize argument
+    for i, (task, exp_df) in enumerate(exp_dict.items()):
+        task = task.split("/")[0]
+        ylabel = stat_name.replace("_", " ").title() if stat_name is not None else "Mean Test Return"
+        plot_single_exp(axes[i] if ntasks > 1 else axes, 
+                        exp_df, 
+                        baselines[task],
+                        stat_name=stat_name, 
+                        xlabel="Timesteps", 
+                        ylabel=ylabel if i == 0 else None,
+                        yaxis_lims=yaxis_lims, xaxis_lims=xaxis_lims, 
+                        plot_title=task if show_subplot_task_name else None)
+
+    if legend:
+        plt.legend(borderaxespad=0., ncol=legend_cols)
+    if plot_suptitle:
+        plt.suptitle(plot_suptitle)
+
+    if save:
+        if not os.path.exists(savedir):
+            os.mkdir("figures")            
+        savepath = os.path.join(savedir, savename + ".pdf")
+        print(f"Saving to {savepath}")
+        plt.savefig(savepath, bbox_inches="tight")
+    plt.show()
 
 
 
-if __name__ == '__main__':
-    _load_data_from_wandb()
+# if __name__ == '__main__':
+#     _load_data_from_wandb()
+
+# Example usage:
+
+files = ['ppo_eval.json']
+
+steps = None
+
+if __name__ == '__main__': 
+    
+    
+    # _load_data_from_wandb(date_after="2025-02-28##")
+    # Uncomment to regenerate data
+    # Date after is a MongoDB regex
+    # load_marl_eval_history_data(equal_steps=steps, output_filename=files[0], job_type="test",  date_after="2025-02-28##")
+
+
+    # # Load and process experiment outputs
+    raw_dict = load_and_merge_json_dicts(files)
+
+    metrics = ['eval/mean_reward', 'eval/burnt trees']
+    
+    plot_history_data(raw_dict, metrics, tasks=['default'])
+
+    # exit()
+    processed_data = Plotting.process_data(raw_dict)
+    # print(processed_data)
+    
+    doctor = DiagnoseData(raw_data=processed_data)
+    print(doctor.check_data())
+    # print(doctor.check_runs(num_runs=[3]))
+    # print(doctor.check_algo(['vdn', 'qmix', 'iql']))
+    # print(doctor.check_metric(['eval/mean_reward']))
+    exit()
+    
+    Plotting.task_sample_efficiency_curves(
+        processed_data=processed_data, env=project, task="default"
+    )
+    (
+        environment_comparison_matrix,
+        sample_efficiency_matrix,
+    ) = Plotting.create_matrices(processed_data, env_name=project)
+
+
+
+    # Plotting
+    Plotting.performance_profile_figure(
+        environment_comparison_matrix=environment_comparison_matrix
+    )
+    Plotting.aggregate_scores(
+        environment_comparison_matrix=environment_comparison_matrix
+    )
+    Plotting.environemnt_sample_efficiency_curves(
+        sample_effeciency_matrix=sample_efficiency_matrix
+    )
+
+
+    Plotting.probability_of_improvement(
+        environment_comparison_matrix,
+        algorithms_to_compare=[["qmix", "vdn"]],
+    )
+    plt.show()

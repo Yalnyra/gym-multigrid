@@ -1,0 +1,890 @@
+{
+  "Wildfire": {
+    "default": {
+      "algo_unknown": {
+        "ppo_10_13_agent_adjacent_03_10_09_34_20": {
+          "STEP_1": {
+            "_step": 14
+          },
+          "STEP_2": {
+            "_step": 15
+          },
+          "STEP_3": {
+            "_step": 16
+          },
+          "STEP_4": {
+            "_step": 59
+          },
+          "STEP_5": {
+            "_step": 255
+          },
+          "STEP_6": {
+            "_step": 282
+          },
+          "STEP_7": {
+            "_step": 304
+          },
+          "STEP_8": {
+            "_step": 355
+          },
+          "STEP_9": {
+            "_step": 385
+          },
+          "STEP_10": {
+            "_step": 388
+          },
+          "STEP_11": {
+            "_step": 394
+          },
+          "STEP_12": {
+            "_step": 395
+          },
+          "STEP_13": {
+            "_step": 530
+          },
+          "STEP_14": {
+            "_step": 646
+          },
+          "STEP_15": {
+            "_step": 649
+          },
+          "STEP_16": {
+            "_step": 656
+          },
+          "STEP_17": {
+            "_step": 672
+          },
+          "STEP_18": {
+            "_step": 707
+          },
+          "STEP_19": {
+            "_step": 728
+          },
+          "STEP_20": {
+            "_step": 737
+          },
+          "STEP_21": {
+            "_step": 758
+          },
+          "STEP_22": {
+            "_step": 786
+          },
+          "STEP_23": {
+            "_step": 788
+          },
+          "STEP_24": {
+            "_step": 809
+          },
+          "STEP_25": {
+            "_step": 842
+          }
+        },
+        "ppo_10_13_fire_adjacent_03_10_09_34_02": {
+          "STEP_1": {
+            "_step": 17
+          },
+          "STEP_2": {
+            "_step": 269
+          },
+          "STEP_3": {
+            "_step": 318
+          },
+          "STEP_4": {
+            "_step": 331
+          },
+          "STEP_5": {
+            "_step": 382
+          },
+          "STEP_6": {
+            "_step": 399
+          },
+          "STEP_7": {
+            "_step": 402
+          },
+          "STEP_8": {
+            "_step": 412
+          },
+          "STEP_9": {
+            "_step": 416
+          },
+          "STEP_10": {
+            "_step": 417
+          },
+          "STEP_11": {
+            "_step": 496
+          },
+          "STEP_12": {
+            "_step": 501,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_13": {
+            "_step": 521,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_14": {
+            "_step": 525,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_15": {
+            "_step": 561,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_16": {
+            "_step": 571,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_17": {
+            "_step": 575,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_18": {
+            "_step": 582,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_19": {
+            "_step": 621,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_20": {
+            "_step": 680,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_21": {
+            "_step": 682,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_22": {
+            "_step": 685,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_23": {
+            "_step": 743,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_24": {
+            "_step": 779,
+            "eval/mean_reward": -0.5132231404958676
+          },
+          "STEP_25": {
+            "_step": 815,
+            "eval/mean_reward": -0.5132231404958676
+          }
+        },
+        "ppo_10_13_agent_above_03_10_09_34_02": {
+          "STEP_1": {
+            "_step": 10
+          },
+          "STEP_2": {
+            "_step": 14
+          },
+          "STEP_3": {
+            "_step": 55
+          },
+          "STEP_4": {
+            "_step": 69
+          },
+          "STEP_5": {
+            "_step": 76
+          },
+          "STEP_6": {
+            "_step": 92
+          },
+          "STEP_7": {
+            "_step": 101
+          },
+          "STEP_8": {
+            "_step": 170
+          },
+          "STEP_9": {
+            "_step": 293
+          },
+          "STEP_10": {
+            "_step": 300
+          },
+          "STEP_11": {
+            "_step": 374
+          },
+          "STEP_12": {
+            "_step": 411
+          },
+          "STEP_13": {
+            "_step": 492
+          },
+          "STEP_14": {
+            "_step": 604
+          },
+          "STEP_15": {
+            "_step": 659
+          },
+          "STEP_16": {
+            "_step": 663
+          },
+          "STEP_17": {
+            "_step": 688
+          },
+          "STEP_18": {
+            "_step": 718
+          },
+          "STEP_19": {
+            "_step": 722
+          },
+          "STEP_20": {
+            "_step": 724
+          },
+          "STEP_21": {
+            "_step": 772
+          },
+          "STEP_22": {
+            "_step": 890
+          },
+          "STEP_23": {
+            "_step": 892
+          },
+          "STEP_24": {
+            "_step": 897
+          },
+          "STEP_25": {
+            "_step": 951
+          }
+        },
+        "ppo_5_13_agent_adjacent_03_09_12_24_22": {
+          "STEP_1": {
+            "_step": 0.0
+          },
+          "STEP_2": {
+            "_step": 1.0
+          },
+          "STEP_3": {
+            "_step": 2.0,
+            "eval/mean_reward": 2.12422513961792
+          },
+          "STEP_4": {
+            "_step": 3.0,
+            "eval/mean_reward": 1.718887706597646
+          },
+          "STEP_5": {
+            "_step": 4.0,
+            "eval/mean_reward": 1.313550273577372
+          },
+          "STEP_6": {
+            "_step": 5.0,
+            "eval/mean_reward": 0.9082128405570984
+          }
+        },
+        "ppo_10_13_fire_adjacent_03_09_11_27_45": {
+          "STEP_1": {
+            "_step": 35
+          },
+          "STEP_2": {
+            "_step": 71
+          },
+          "STEP_3": {
+            "_step": 115
+          },
+          "STEP_4": {
+            "_step": 127
+          },
+          "STEP_5": {
+            "_step": 154
+          },
+          "STEP_6": {
+            "_step": 170
+          },
+          "STEP_7": {
+            "_step": 219
+          },
+          "STEP_8": {
+            "_step": 266
+          },
+          "STEP_9": {
+            "_step": 315
+          },
+          "STEP_10": {
+            "_step": 347
+          },
+          "STEP_11": {
+            "_step": 359
+          },
+          "STEP_12": {
+            "_step": 383
+          },
+          "STEP_13": {
+            "_step": 419
+          },
+          "STEP_14": {
+            "_step": 466
+          },
+          "STEP_15": {
+            "_step": 486
+          },
+          "STEP_16": {
+            "_step": 509
+          },
+          "STEP_17": {
+            "_step": 545
+          },
+          "STEP_18": {
+            "_step": 575
+          },
+          "STEP_19": {
+            "_step": 585
+          },
+          "STEP_20": {
+            "_step": 599
+          },
+          "STEP_21": {
+            "_step": 613
+          },
+          "STEP_22": {
+            "_step": 620
+          },
+          "STEP_23": {
+            "_step": 624
+          },
+          "STEP_24": {
+            "_step": 638
+          },
+          "STEP_25": {
+            "_step": 721
+          }
+        },
+        "ppo_5_13_fire_adjacent_03_09_11_18_45": {
+          "STEP_1": {
+            "_step": 134
+          },
+          "STEP_2": {
+            "_step": 171
+          },
+          "STEP_3": {
+            "_step": 172
+          },
+          "STEP_4": {
+            "_step": 260,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_5": {
+            "_step": 263,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_6": {
+            "_step": 279,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_7": {
+            "_step": 295,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_8": {
+            "_step": 367,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_9": {
+            "_step": 402,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_10": {
+            "_step": 409,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_11": {
+            "_step": 493,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_12": {
+            "_step": 534,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_13": {
+            "_step": 547,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_14": {
+            "_step": 560,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_15": {
+            "_step": 589,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_16": {
+            "_step": 622,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_17": {
+            "_step": 628,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_18": {
+            "_step": 661,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_19": {
+            "_step": 697,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_20": {
+            "_step": 716,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_21": {
+            "_step": 748,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_22": {
+            "_step": 845,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_23": {
+            "_step": 851,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_24": {
+            "_step": 882,
+            "eval/mean_reward": 6.561208677685953
+          },
+          "STEP_25": {
+            "_step": 896,
+            "eval/mean_reward": 6.561208677685953
+          }
+        },
+        "ppo_10_13_agent_above_03_09_10_31_17": {
+          "STEP_1": {
+            "_step": 55
+          },
+          "STEP_2": {
+            "_step": 139
+          },
+          "STEP_3": {
+            "_step": 176
+          },
+          "STEP_4": {
+            "_step": 190
+          },
+          "STEP_5": {
+            "_step": 226
+          },
+          "STEP_6": {
+            "_step": 241
+          },
+          "STEP_7": {
+            "_step": 252
+          },
+          "STEP_8": {
+            "_step": 290
+          },
+          "STEP_9": {
+            "_step": 306
+          },
+          "STEP_10": {
+            "_step": 335
+          },
+          "STEP_11": {
+            "_step": 366
+          },
+          "STEP_12": {
+            "_step": 388,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_13": {
+            "_step": 460,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_14": {
+            "_step": 492,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_15": {
+            "_step": 515,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_16": {
+            "_step": 525,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_17": {
+            "_step": 592,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_18": {
+            "_step": 633,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_19": {
+            "_step": 642,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_20": {
+            "_step": 643,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_21": {
+            "_step": 684,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_22": {
+            "_step": 695,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_23": {
+            "_step": 778,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_24": {
+            "_step": 797,
+            "eval/mean_reward": -1.9222882231404954
+          },
+          "STEP_25": {
+            "_step": 817,
+            "eval/mean_reward": -1.9222882231404954
+          }
+        },
+        "ppo_15_13_agent_above_03_09_10_31_17": {
+          "STEP_1": {
+            "_step": 0
+          },
+          "STEP_2": {
+            "_step": 24
+          },
+          "STEP_3": {
+            "_step": 124
+          },
+          "STEP_4": {
+            "_step": 166
+          },
+          "STEP_5": {
+            "_step": 265
+          },
+          "STEP_6": {
+            "_step": 267
+          },
+          "STEP_7": {
+            "_step": 282
+          },
+          "STEP_8": {
+            "_step": 329
+          },
+          "STEP_9": {
+            "_step": 381
+          },
+          "STEP_10": {
+            "_step": 393
+          },
+          "STEP_11": {
+            "_step": 398
+          },
+          "STEP_12": {
+            "_step": 426
+          },
+          "STEP_13": {
+            "_step": 427
+          },
+          "STEP_14": {
+            "_step": 434
+          },
+          "STEP_15": {
+            "_step": 443
+          },
+          "STEP_16": {
+            "_step": 455
+          },
+          "STEP_17": {
+            "_step": 456,
+            "eval/mean_reward": -2.750120523415978
+          },
+          "STEP_18": {
+            "_step": 468,
+            "eval/mean_reward": -2.750120523415978
+          },
+          "STEP_19": {
+            "_step": 506,
+            "eval/mean_reward": -2.750120523415978
+          },
+          "STEP_20": {
+            "_step": 525,
+            "eval/mean_reward": -2.750120523415978
+          },
+          "STEP_21": {
+            "_step": 527,
+            "eval/mean_reward": -2.750120523415978
+          },
+          "STEP_22": {
+            "_step": 552,
+            "eval/mean_reward": -2.750120523415978
+          },
+          "STEP_23": {
+            "_step": 587,
+            "eval/mean_reward": -2.750120523415978
+          },
+          "STEP_24": {
+            "_step": 705,
+            "eval/mean_reward": -2.750120523415978
+          },
+          "STEP_25": {
+            "_step": 710,
+            "eval/mean_reward": -2.750120523415978
+          }
+        },
+        "ppo_5_13_agent_above_03_09_10_31_17": {
+          "STEP_1": {
+            "_step": 42
+          },
+          "STEP_2": {
+            "_step": 72
+          },
+          "STEP_3": {
+            "_step": 109
+          },
+          "STEP_4": {
+            "_step": 129
+          },
+          "STEP_5": {
+            "_step": 131
+          },
+          "STEP_6": {
+            "_step": 145
+          },
+          "STEP_7": {
+            "_step": 158
+          },
+          "STEP_8": {
+            "_step": 199
+          },
+          "STEP_9": {
+            "_step": 255
+          },
+          "STEP_10": {
+            "_step": 323
+          },
+          "STEP_11": {
+            "_step": 337
+          },
+          "STEP_12": {
+            "_step": 360
+          },
+          "STEP_13": {
+            "_step": 407
+          },
+          "STEP_14": {
+            "_step": 480
+          },
+          "STEP_15": {
+            "_step": 527
+          },
+          "STEP_16": {
+            "_step": 532,
+            "eval/mean_reward": -0.8753099173553716
+          },
+          "STEP_17": {
+            "_step": 540,
+            "eval/mean_reward": -0.8753099173553716
+          },
+          "STEP_18": {
+            "_step": 542,
+            "eval/mean_reward": -0.8753099173553716
+          },
+          "STEP_19": {
+            "_step": 544,
+            "eval/mean_reward": -0.8753099173553716
+          },
+          "STEP_20": {
+            "_step": 590,
+            "eval/mean_reward": -0.8753099173553716
+          },
+          "STEP_21": {
+            "_step": 623,
+            "eval/mean_reward": -0.8753099173553716
+          },
+          "STEP_22": {
+            "_step": 651,
+            "eval/mean_reward": -0.8753099173553716
+          },
+          "STEP_23": {
+            "_step": 657,
+            "eval/mean_reward": -0.8753099173553716
+          },
+          "STEP_24": {
+            "_step": 732,
+            "eval/mean_reward": -0.8753099173553716
+          },
+          "STEP_25": {
+            "_step": 829,
+            "eval/mean_reward": -0.8753099173553716
+          }
+        },
+        "ppo_5_13_default_3b355ef0": {
+          "STEP_1": {
+            "_step": 0.0
+          },
+          "STEP_2": {
+            "_step": 1.0
+          },
+          "STEP_3": {
+            "_step": 2.0,
+            "eval/mean_reward": 4.658677577972412
+          },
+          "STEP_4": {
+            "_step": 3.0,
+            "eval/mean_reward": 3.79504132270813
+          },
+          "STEP_5": {
+            "_step": 4.0,
+            "eval/mean_reward": 2.9314050674438477
+          },
+          "STEP_6": {
+            "_step": 5.0,
+            "eval/mean_reward": 2.0677688121795654
+          },
+          "STEP_7": {
+            "_step": 6.0,
+            "eval/mean_reward": 2.0677688121795654
+          },
+          "STEP_8": {
+            "_step": 7.0,
+            "eval/mean_reward": 2.0677688121795654
+          }
+        },
+        "ppo_5_13_default_c9338f1c": {
+          "STEP_1": {
+            "_step": 0.0
+          },
+          "STEP_2": {
+            "_step": 1.0
+          },
+          "STEP_3": {
+            "_step": 2.0,
+            "eval/mean_reward": 4.72231388092041
+          },
+          "STEP_4": {
+            "_step": 3.0,
+            "eval/mean_reward": 5.736363569895427
+          },
+          "STEP_5": {
+            "_step": 4.0,
+            "eval/mean_reward": 6.750413258870443
+          },
+          "STEP_6": {
+            "_step": 5.0,
+            "eval/mean_reward": 7.764462947845459
+          },
+          "STEP_7": {
+            "_step": 6.0,
+            "eval/mean_reward": 7.764462947845459
+          },
+          "STEP_8": {
+            "_step": 7.0,
+            "eval/mean_reward": 7.764462947845459
+          }
+        },
+        "ppo_5_13_default_f531dd49": {
+          "STEP_1": {
+            "_step": 0.0
+          },
+          "STEP_2": {
+            "_step": 1.0
+          },
+          "STEP_3": {
+            "_step": 2.0,
+            "eval/mean_reward": -2.779338836669922
+          },
+          "STEP_4": {
+            "_step": 3.0,
+            "eval/mean_reward": -1.071349859237671
+          },
+          "STEP_5": {
+            "_step": 4.0,
+            "eval/mean_reward": 0.6366391181945801
+          },
+          "STEP_6": {
+            "_step": 5.0,
+            "eval/mean_reward": 2.344628095626831
+          },
+          "STEP_7": {
+            "_step": 6.0,
+            "eval/mean_reward": 2.344628095626831
+          },
+          "STEP_8": {
+            "_step": 7.0,
+            "eval/mean_reward": 2.344628095626831
+          }
+        },
+        "ppo_5_13": {
+          "STEP_1": {
+            "_step": 57
+          },
+          "STEP_2": {
+            "_step": 62
+          },
+          "STEP_3": {
+            "_step": 69
+          },
+          "STEP_4": {
+            "_step": 75
+          },
+          "STEP_5": {
+            "_step": 170
+          },
+          "STEP_6": {
+            "_step": 201
+          },
+          "STEP_7": {
+            "_step": 205
+          },
+          "STEP_8": {
+            "_step": 316
+          },
+          "STEP_9": {
+            "_step": 384
+          },
+          "STEP_10": {
+            "_step": 458
+          },
+          "STEP_11": {
+            "_step": 521
+          },
+          "STEP_12": {
+            "_step": 523
+          },
+          "STEP_13": {
+            "_step": 534
+          },
+          "STEP_14": {
+            "_step": 539
+          },
+          "STEP_15": {
+            "_step": 545
+          },
+          "STEP_16": {
+            "_step": 619
+          },
+          "STEP_17": {
+            "_step": 669
+          },
+          "STEP_18": {
+            "_step": 715
+          },
+          "STEP_19": {
+            "_step": 767
+          },
+          "STEP_20": {
+            "_step": 772
+          },
+          "STEP_21": {
+            "_step": 830
+          },
+          "STEP_22": {
+            "_step": 919
+          },
+          "STEP_23": {
+            "_step": 947
+          },
+          "STEP_24": {
+            "_step": 954
+          },
+          "STEP_25": {
+            "_step": 1037
+          }
+        }
+      }
+    }
+  }
+}

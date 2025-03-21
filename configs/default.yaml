@@ -9,9 +9,10 @@ defaults:
   - experiments/team_size: default
   - experiments/fire_spread: default
   # - override hydra/job_logging: file
+  # - override hydra/sweeper: ax
   # - override hydra/launcher: submitit_local
   - override hydra/launcher: joblib
-  # - override hydra/sweeper: wandb
+  # - override hydra/sweeper: optuna
 
 
 hydra:
@@ -22,17 +23,23 @@ hydra:
     dir: 'D:/python_course/gym-multigrid/'
     # dir: 'D:/'
     subdir: ''
+
   launcher:
     # timeout_min: 2880
     # timeout: 2880
-    n_jobs: -3
-    pre_dispatch: n_jobs
-
+    n_jobs: -2
+    pre_dispatch: 2*n_jobs
+    prefer: processes
+    backend: multiprocessing
+  sweeper: 
+    max_batch_size: 1
+  #   study_name: ${name}
+  #   seed: ${seed}
   job:
     chdir: True
 
 wandb: 
-  enabled: False
+  enabled: True
   entity: vinokur-eg-
   project: Wildfire
   mode: online
@@ -82,4 +89,4 @@ train_epochs: 100_000
 memory_size: 10_000  # Max memory buffer size
 valid_interval: 10_000 # Valid frequency during train
 batch_size_run: 1 # N of envs to run in parallel
-episodes: 5
+episodes: 15

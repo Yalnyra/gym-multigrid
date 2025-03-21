@@ -1138,13 +1138,13 @@ class WildfireEnv(MultiGridEnv):
         # check if episode is done
         if len(self.trees_on_fire) == 0:
             terminated = np.ones(len(self.agents))
-            term_reward = -self.burnt_trees / self.grid_size_without_walls ** 2
+            term_reward = len(self.unburnt_trees) / self.grid_size_without_walls ** 2
             rewards = term_reward if self.common_reward else {a: term_reward for a in self.agents}
             # self.agents = []
             # self.agents_storage = []
         elif self.step_count >= self.max_steps:
             truncated = np.ones(len(self.agents))
-            trunc_reward = len(self.unburnt_trees) / self.grid_size_without_walls ** 2
+            trunc_reward = -self.burnt_trees / self.grid_size_without_walls ** 2
             rewards = trunc_reward if self.common_reward else {a: trunc_reward for a in self.agents}
             # self.agents = []
             # self.agents_storage = []

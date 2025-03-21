@@ -1,0 +1,5 @@
+# @package _global_
+
+# env:
+partial_obs: False
+agent_view_size: ${world_size}

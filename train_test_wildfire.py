@@ -24,8 +24,6 @@ from algorithm.utils.general_reward_support import test_alg_config_supports_rewa
 from algorithm.utils.logging import Logger, get_logger
 from algorithm.utils.timehelper import time_left, time_str
 
-console_logger = get_logger()
-
 
 # Async Env parameter sharing
 # from agilerl.vector.pz_async_vec_env import AsyncPettingZooVecEnv
@@ -107,12 +105,14 @@ def load_model(model_path: str, name:str, env=None):
 
 def test_model(env, config:DictConfig, model=None):
     frames = []
-    for ep in range(config["episodes"]):
+    for ep in range(1, config["episodes"] +1):
         steps = 0
         terminated, truncated = {0: False}, {0: False}
         seed = config.get("seed", None)
         (obs, info) = env.reset(seed)
         ep_reward = 0.
+        frac_burned = []
+        frac_unburned = []
         while not terminated[0]:
             agents = list(range(config['env']['agents']))
             actions = {agent: env.action_space().sample() for agent in agents}
@@ -122,7 +122,7 @@ def test_model(env, config:DictConfig, model=None):
                 # actions, states = model.predict(obs, deterministic=True)
                 match config['training_type']:
                     case 'sb3':
-                        actions = {agent: model.predict(obs[agent], deterministic=False)[0] for agent in agents}
+                        actions = {agent: model.predict(obs[agent], deterministic=True)[0] for agent in agents}
                     case 'agile_rl':
                         _, actions = model.get_action(
                             obs, training=False, infos=info
@@ -130,38 +130,40 @@ def test_model(env, config:DictConfig, model=None):
                         
                 print("using model, actions are: ", actions)
 
-            inference_dt = 1.0 / (time.time() - inference_dt + 1e-6)
+            # inference_dt = 1.0 / (time.time() - inference_dt + 1e-6)
             
             obs, reward, terminated, truncated, infos = env.step(actions)
             # Show next step on screen and add to the video frames list
             frames.append(env.render())
-            mean_reward_per_agent = np.mean(list(reward.values()))
+            mean_reward_per_agent += np.mean(list(reward.values()))
             ep_reward += float(mean_reward_per_agent)
             frac_burned = infos[0]['burnt trees']
             frac_unburned = infos[0]['unburnt trees']
-            print(
-                f"Reward: {reward}, \n burnt trees %: {frac_burned}, \n terminated: {terminated}, truncated: {truncated}, Frames length: {len(frames)}"
-                # , Inference time in ms: {inference_dt}"
-            )
+            
             
             steps += 1
             if config['wandb']['enabled']:
             # Log reward at each step to wandb
                 wandb.log(
                     {
-                        "eval/reward": mean_reward_per_agent,
-                        "eval/burnt trees": frac_burned,
-                        "eval/unburnt trees": frac_unburned,
-                        "Inference FPS": inference_dt,
+                        # "eval/mean_reward": mean_reward_per_agent,
+                        
                     }
                 )
         if config['wandb']['enabled']:
         # Total episode reward
             wandb.log(
                 {
-                    "eval/mean_reward": ep_reward,
-                }
+                    "eval/mean_reward": mean_reward_per_agent / ep,
+                    "eval/burnt trees": np.mean(frac_burned),
+                    "eval/unburnt trees": np.mean(frac_unburned),
+                },
+                ep
         )
+        ep_reward = 0
+        frac_burned = []
+        frac_unburned = []
+    env.save_replay()
     save_frames_as_gif(frames=frames, path=config['log'], filename=f"{config['run_id']}", ep=config['train_epochs'], fps=5)
     if config['wandb']['enabled']:
         wandb.log({"video": wandb.Video(f"{config['log']}/{config['run_id']}-{config['train_epochs']}.gif", format="gif")})
@@ -170,7 +172,7 @@ def test_model(env, config:DictConfig, model=None):
 
 def train(config: DictConfig, logger: Logger):
     # Create and wrap the training environment
-    model_path = f"{config['model_save_path']}/{config['run_id']}"
+    model_path = f"{config['model_save_path']}/{config['checkpoint']}"
 
     train_env = create_env(config, render_mode=None, inference=False)
     print("Original observation space shape:", train_env.observation_space().shape)
@@ -185,8 +187,38 @@ def train(config: DictConfig, logger: Logger):
         train_env, 
         config,
         _recursive_=False)
-    if not config["from_scratch"]:
-        model = load_model(model_path, train_env, config['name'])
+    if config.checkpoint != "":
+        timesteps = []
+        timestep_to_load = 0
+
+        if not os.path.isdir(config.model_save_path):
+            logger.console_logger.info(
+                "Checkpoint directiory {} doesn't exist".format(config.model_save_path)
+            )
+            return
+
+        # # Go through all files in args.checkpoint_path
+        for file in os.listdir(config.model_save_path):
+            epochs = str.split(file, sep='_')[-1]
+            full_name = os.path.join(config.model_save_path,config .checkpoint+"_0_"+epochs)
+            
+            # Check if they are dirs the names of which are numbers
+            # print(epochs)
+            if os.path.isfile(full_name) and epochs.isdigit():
+                timesteps.append(int(epochs))
+        # print(timesteps)
+        if config.train_epochs == 0:
+            # choose the max timestep
+            timestep_to_load = max(timesteps)
+        else:
+            # choose the timestep closest to load_step
+            timestep_to_load = min(timesteps, key=lambda x: abs(x - int(config.train_epochs)))
+
+        model_path = os.path.join(config.model_save_path,config.checkpoint+"_0_"+str(timestep_to_load))
+
+
+        logger.console_logger.info("Loading model from {}".format(model_path))
+        model = load_model(model_path, config['name'], train_env)
         # if config['wandb']['enabled']:
 
     train_env.reset()
@@ -218,8 +250,37 @@ def test(config:DictConfig):
     model=None
     ext = '.zip' if config['training_type'] == 'sb3' else '.pt'
     if config['name'] in ['ppo', 'matd3', 'maddpg']:
-        path = os.path.join(config['model_save_path'],config['run_id']+"_0_"+str(config['train_epochs']))
-        model = load_model(path, config['name'])
+        if config.checkpoint != "":
+            timesteps = []
+            timestep_to_load = 0
+
+            if not os.path.isdir(config.model_save_path):
+                print(
+                    "Checkpoint directiory {} doesn't exist".format(config.model_save_path)
+                )
+                return
+
+            # # Go through all files in args.checkpoint_path
+            for file in os.listdir(config.model_save_path):
+                epochs = str.split(file, sep='_')[-1]
+                full_name = os.path.join(config.model_save_path,config .checkpoint+"_0_"+epochs)
+                # Check if they are dirs the names of which are numbers
+                # print(epochs)
+                if os.path.isfile(full_name) and epochs.isdigit():
+                    timesteps.append(int(epochs))
+            # print(timesteps)
+            if config.train_epochs == 0:
+                # choose the max timestep
+                timestep_to_load = max(timesteps)
+            else:
+                # choose the timestep closest to load_step
+                timestep_to_load = min(timesteps, key=lambda x: abs(x - int(config.train_epochs)))
+
+            model_path = os.path.join(config.model_save_path,config.checkpoint+"_0_"+str(timestep_to_load))
+
+
+            print("Loading model from {}".format(model_path))
+            model = load_model(model_path, config['name'])
         
 
     # Test the trained model
@@ -454,7 +515,10 @@ def args_sanity_check(config):
 ##############################################
 @hydra.main(config_path="configs/", config_name="default", version_base="1.3")
 def main(cfg: DictConfig):
-
+    try:
+        console_logger = get_logger()
+    except:
+        pass
     cfg = args_sanity_check(cfg)
 
 
@@ -528,12 +592,17 @@ def main(cfg: DictConfig):
                                       resolve=True,
                                       throw_on_missing=True,)
         run_sequential(args, logger)
-        exit()
+        logger.save(model_path)
+        # wandb.finish(0)   
+        optim_result = np.median(logger.stats['burnt trees'])
+        logger.finish()
+        return optim_result
     if not cfg['evaluate']:
         train(cfg, logger)
     test(cfg)
-    logger.save(model_path)
-    wandb.finish(0)    
+    optim_result = np.median(logger.stats['burnt trees'])
+    logger.finish()
+    return optim_result
 
 
 
