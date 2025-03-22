@@ -6,6 +6,9 @@ import numpy as np
 from algorithm.components.episode_buffer import EpisodeBatch
 from train_test_wildfire import create_env
 from omegaconf import DictConfig
+import os
+from wandb import Video
+import torch as th
 
 
 # Based (very) heavily on SubprocVecEnv from OpenAI Baselines
@@ -23,12 +26,13 @@ class ParallelRunner:
 
 
         env_fn = create_env
-        env_args = [self.args.env.copy() for _ in range(self.batch_size)]
+        env_args = [vars(self.args) for _ in range(self.batch_size)]
         for i in range(self.batch_size):
-            # env_args[i]["seed"] += i
+            env_args[i]["seed"] += i
 
-            env_args[i]["common_reward"] = self.args.common_reward
-            env_args[i]["reward_scalarisation"] = self.args.reward_scalarisation
+        #     # env_args[i]["common_reward"] = self.args.common_reward
+        #     # env_args[i]["reward_scalarisation"] = self.args.reward_scalarisation
+
         self.ps = [
             Process(
                 target=env_worker,
@@ -74,8 +78,17 @@ class ParallelRunner:
     def get_env_info(self):
         return self.env_info
 
+    # def save_replay(self):
+    #     self.parent_conns[0].send(("save_replay", None))
+
     def save_replay(self):
-        self.parent_conns[0].send(("save_replay", None))
+        path = os.path.join(self.args.log,self.args.run_id+'-'+str(self.t)+".gif")
+        self.parent_conns[0].send(("save_replay", self.args.log, self.args.run_id, self.t_env))
+        if self.args.wandb['enabled']:
+            try:
+                self.logger.wandb.log({"video": Video(path, format="gif")})
+            except(FileNotFoundError):
+                print("file not found:", path)
 
     def close_env(self):
         for parent_conn in self.parent_conns:
@@ -167,15 +180,15 @@ class ParallelRunner:
                 if not terminated[idx]:
                     data = parent_conn.recv()
                     # Remaining data for this current timestep
-                    post_transition_data["reward"].append((data["reward"],))
+                    post_transition_data["reward"].append(data["reward"])
 
-                    episode_returns[idx] += data["reward"]
+                    episode_returns[idx] += np.mean(data["reward"])
                     episode_lengths[idx] += 1
                     if not test_mode:
                         self.env_steps_this_run += 1
 
                     env_terminated = False
-                    if data["terminated"]:
+                    if data["terminated"][0] or data["truncated"][0]:
                         final_env_infos.append(data["info"])
                     if data["terminated"] and not data["info"].get(
                         "episode_limit", False
@@ -220,7 +233,7 @@ class ParallelRunner:
         cur_stats = self.test_stats if test_mode else self.train_stats
         cur_returns = self.test_returns if test_mode else self.train_returns
         log_prefix = "test_" if test_mode else ""
-        infos = [cur_stats] + final_env_infos
+        infos = [cur_stats] + final_env_infos[0] + env_stats
         cur_stats.update(
             {
                 k: sum(d.get(k, 0) for d in infos)
@@ -229,6 +242,8 @@ class ParallelRunner:
         )
         cur_stats["n_episodes"] = self.batch_size + cur_stats.get("n_episodes", 0)
         cur_stats["ep_length"] = sum(episode_lengths) + cur_stats.get("ep_length", 0)
+        # cur_stats["burnt trees"] = env_stats["burnt trees"] + cur_stats.get("burnt trees", 0)
+        # cur_stats['unburnt trees'] = last_unburnt + cur_stats.get("unburnt trees", 0)
 
         cur_returns.extend(episode_returns)
 
@@ -248,6 +263,7 @@ class ParallelRunner:
         return self.batch
 
     def _log(self, returns, stats, prefix):
+        print("Logging stat:", returns, stats, prefix)
         if self.args.common_reward:
             self.logger.log_stat(prefix + "mean_reward", np.mean(returns), self.t_env)
             self.logger.log_stat(prefix + "std_of_mean_reward", np.std(returns), self.t_env)
@@ -271,7 +287,12 @@ class ParallelRunner:
                 prefix + "std_of_total_mean_reward", total_returns.std(), self.t_env
             )
         returns.clear()
-
+        self.logger.log_stat(
+                prefix + "burnt trees", np.mean(stats['burnt trees']), self.t_env
+            )
+        self.logger.log_stat(
+            prefix + "unburnt trees", np.mean(stats['unburnt trees']), self.t_env
+        )
         for k, v in stats.items():
             if k != "n_episodes":
                 self.logger.log_stat(
@@ -293,11 +314,21 @@ def env_worker(remote, env_fn):
             actions = data
             # Take a step in the environment
             _, reward, terminated, truncated, env_info = env.step(actions)
-            terminated = terminated or truncated
+            terminated = terminated[0] or truncated[0]
             # Return the observations, avail_actions and state to make the next action
             state = env.get_state()
             avail_actions = env.get_avail_actions()
-            obs = env.get_obs()
+            obs = env._get_obs()
+            
+            state = th.tensor(np.array([data['get_state'] for _ in range(env.num_agents)])).flatten().unsqueeze(0)
+            
+            obs = th.tensor(np.array([obs for _, obs in data['_get_obs'].items()])).flatten().unsqueeze(0)
+            
+            if isinstance(reward, dict):
+                reward = tuple(reward.values())
+
+            reward = th.tensor([reward]).unsqueeze(0)
+
             remote.send(
                 {
                     # Data for the next timestep needed to pick an action
@@ -307,16 +338,24 @@ def env_worker(remote, env_fn):
                     # Rest of the data for the current timestep
                     "reward": reward,
                     "terminated": terminated,
-                    "info": env_info,
+                    "info": env_info[0],
                 }
             )
         elif cmd == "reset":
             env.reset()
+
+            state = env.get_state()
+            obs = env._get_obs()
+
+            state = th.tensor(np.array([data['get_state'] for _ in range(env.num_agents)])).flatten().unsqueeze(0)
+            
+            obs = th.tensor(np.array([obs for _, obs in data['_get_obs'].items()])).flatten().unsqueeze(0)
+          
             remote.send(
                 {
-                    "state": env.get_state(),
+                    "state": state,
                     "avail_actions": env.get_avail_actions(),
-                    "obs": env.get_obs(),
+                    "obs": obs,
                 }
             )
         elif cmd == "close":

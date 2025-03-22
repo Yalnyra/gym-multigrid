@@ -341,7 +341,13 @@ class WildfireEnv(MultiGridEnv):
 
 
     def get_stats(self):
-        return {}
+        info = self.info[0]
+        return {
+                "burnt trees": info['burnt trees'],
+                "unburnt trees": info['unburnt trees'],
+                "episode_limit": self.max_steps,
+                "episode_length": self.step_count,
+                }
 
     def observe(self, agent:AgentID):
         """
