@@ -181,7 +181,7 @@ class DCGCriticNS:
         """Computes the Q-values for given utilities, payoffs and actions (Algorithm 2 in Boehmer et al., 2020)."""
         n_batches = actions.shape[0]
         # Use the utilities for the chosen actions
-        values = f_i.gather(dim=-1, index=actions).squeeze(dim=-1).mean(dim=-1)
+        values = f_i.gather(dim=-1, index=actions.unsqueeze(-1)).squeeze(dim=-1).mean(dim=-1)
         # Use the payoffs for the chosen actions (if the CG contains edges)
         if len(self.edges_from) > 0:
             f_ij = f_ij.view(
@@ -351,10 +351,10 @@ class DCGCriticNS:
         # state
         # inputs = batch["state"][:, ts].repeat(1, self.n_agents, 1)
 
-        inputs = th.chunk(batch["obs"][:, ts], self.n_agents, dim=-1)
+        # inputs = th.chunk(batch["obs"][:, ts], self.n_agents, dim=-1)
         # print(obs[0].shape)
         # inputs = [o.unsqueeze(2) for o in obs]
-
+        inputs = batch["obs"][:, ts].view(bs, self.n_agents, -1)
         return inputs
 
     def init_hidden(self, batch_size):

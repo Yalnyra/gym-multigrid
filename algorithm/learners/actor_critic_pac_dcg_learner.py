@@ -71,7 +71,7 @@ class PACDCGLearner:
 
         pi[mask == 0] = 1.0
 
-        pi_taken = th.gather(pi, dim=3, index=actions).squeeze(3)
+        pi_taken = th.gather(pi, dim=3, index=actions.unsqueeze(-1)).squeeze(3)
         log_pi_taken = th.log(pi_taken + 1e-10)
 
         training_ratio_now = min(
@@ -164,7 +164,7 @@ class PACDCGLearner:
             target_out = []
             for i in range(self.n_agents):
                 current_actions = copy.deepcopy(greedy_actions)
-                current_actions[:, :, i] = actions[:, :, i]
+                current_actions[:, :, i] = actions[:, :, i].unsqueeze(-1)
                 self.target_critic.init_hidden(batch.batch_size)
                 target_q_values = []
                 for t in range(batch.max_seq_length - 1):
