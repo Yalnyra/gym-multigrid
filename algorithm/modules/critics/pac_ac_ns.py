@@ -4,7 +4,7 @@ from einops import rearrange, repeat
 import torch as th
 import torch.nn as nn
 
-from modules.critics.mlp import MLP
+from algorithm.modules.critics.mlp import MLP
 
 
 def generate_other_actions(n_actions, n_agents, device):
@@ -44,6 +44,7 @@ class PACCriticNS(nn.Module):
         else:
             inputs, bs, max_t, other_actions = self._build_inputs_cur(batch, t=t)
         qs = []
+        inputs.shape
         for i in range(self.n_agents):
             q = self.critics[i](inputs[:, :, i]).unsqueeze(2)
             qs.append(q)
@@ -87,8 +88,9 @@ class PACCriticNS(nn.Module):
         ts = slice(None) if t is None else slice(t, t + 1)
         inputs = []
         # state
-        inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n_agents, 1))
-
+        obs = th.chunk(batch["obs"][:, ts], self.n_agents, dim=-1)
+        inputs = [o.unsqueeze(2) for o in obs]
+        # inputs.append(batch["obs"][:, ts].unsqueeze(2).repeat(1, 1, self.n_agents, 1))
         # observations
         if self.args.obs_individual_obs:
             inputs.append(
@@ -123,16 +125,15 @@ class PACCriticNS(nn.Module):
                 )
                 inputs.append(last_actions)
 
-        inputs = th.cat(inputs, dim=-1)
+        inputs = th.cat(inputs, dim=-2)
 
         other_actions = self._gen_all_other_actions(batch, bs, max_t)
 
         n_other_actions = other_actions.size(3)
+        inputs.shape
 
         inputs = repeat(inputs, "n s a f -> n s a e f", e=n_other_actions)
         inputs = th.cat((inputs, other_actions), dim=-1)
-
-        # print(inputs.shape)
 
         return inputs, bs, max_t, other_actions
 
@@ -142,8 +143,12 @@ class PACCriticNS(nn.Module):
 
         ts = slice(None) if t is None else slice(t, t + 1)
         inputs = []
-        # state
-        inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n_agents, 1))
+        # obs
+        obs = th.chunk(batch["obs"][:, ts], self.n_agents, dim=-1)
+        inputs = [o.unsqueeze(2) for o in obs]
+      
+        
+        # inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n_agents, 1))
 
         # observations
         if self.args.obs_individual_obs:
@@ -192,14 +197,18 @@ class PACCriticNS(nn.Module):
                 )
             )
         actions = th.cat(actions, dim=2)
-        inputs.append(actions)
-        # inputs.append()
-        inputs = th.cat(inputs, dim=-1)
+        actions = actions.unsqueeze(2).repeat(1,1,self.n_agents, 1)
+        # inputs = th.cat(inputs, dim=-2)
+        # actions = actions.reshape(bs, max_t, self.n_agents, -1)
+        inputs = th.cat(inputs, dim=2)
+        inputs.shape
+        # inputs.append(actions)
+        inputs = th.cat((inputs, actions), dim=-1)
         return inputs, bs, max_t, actions
 
     def _get_input_shape(self, scheme):
         # state
-        input_shape = scheme["state"]["vshape"]
+        input_shape = scheme["state"]["vshape"] // self.n_agents
         # observations
         if self.args.obs_individual_obs:
             input_shape += scheme["obs"]["vshape"] * self.n_agents

@@ -86,9 +86,11 @@ class PACCritic(nn.Module):
         max_t = batch.max_seq_length if t is None else 1
 
         ts = slice(None) if t is None else slice(t, t + 1)
-        inputs = []
+
         # state
-        inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n_agents, 1))
+        obs = th.chunk(batch["obs"][:, ts], self.n_agents, dim=-1)
+        inputs = [o.unsqueeze(2) for o in obs]
+        # inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n_agents, 1))
 
         # observations
         if self.args.obs_individual_obs:
@@ -124,7 +126,7 @@ class PACCritic(nn.Module):
                 )
                 inputs.append(last_actions)
 
-        inputs = th.cat(inputs, dim=-1)
+        inputs = th.cat(inputs, dim=-2)
 
         if self.args.use_subsampling:
             other_actions = self._gen_subsample_other_actions(
@@ -147,9 +149,11 @@ class PACCritic(nn.Module):
         max_t = batch.max_seq_length if t is None else 1
 
         ts = slice(None) if t is None else slice(t, t + 1)
-        inputs = []
+        
+        obs = th.chunk(batch["obs"][:, ts], self.n_agents, dim=-1)
+        inputs = [o.unsqueeze(2) for o in obs]
         # state
-        inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n_agents, 1))
+        # inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n_agents, 1))
 
         # observations
         if self.args.obs_individual_obs:
@@ -197,15 +201,22 @@ class PACCritic(nn.Module):
                     dim=-1,
                 )
             )
+        # actions = th.cat(actions, dim=2)
+        # inputs.append(actions)
+        # # inputs.append()
+        # inputs = th.cat(inputs, dim=-1)
+
         actions = th.cat(actions, dim=2)
-        inputs.append(actions)
-        # inputs.append()
-        inputs = th.cat(inputs, dim=-1)
+        actions = actions.unsqueeze(2).repeat(1,1,self.n_agents, 1)
+        inputs = th.cat(inputs, dim=2)
+        inputs.shape
+        # inputs.append(actions)
+        inputs = th.cat((inputs, actions), dim=-1)
         return inputs, bs, max_t, actions
 
     def _get_input_shape(self, scheme):
         # state
-        input_shape = scheme["state"]["vshape"]
+        input_shape = scheme["state"]["vshape"] // self.n_agents
         # observations
         if self.args.obs_individual_obs:
             input_shape += scheme["obs"]["vshape"] * self.n_agents

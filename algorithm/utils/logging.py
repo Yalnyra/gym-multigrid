@@ -132,7 +132,7 @@ class Logger:
             self.tb_logger(key, value, t)
 
         if self.use_wandb:
-            if self.wandb_current_data and self.wandb_current_t != t:
+            if self.wandb_current_data:
                 self.console_logger.info(
                     f"Logging to WANDB: {self.wandb_current_data} at t={self.wandb_current_t}"
                 )
@@ -191,8 +191,9 @@ class Logger:
 
 
 # set up a custom logger
-def get_logger():
-    logger = logging.getLogger()
+def get_logger(run_id):
+
+    logger = logging.getLogger(__name__)
     logger.handlers = []
     ch = logging.StreamHandler()
     formatter = logging.Formatter(

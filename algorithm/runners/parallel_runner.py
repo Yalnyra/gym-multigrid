@@ -32,7 +32,7 @@ class ParallelRunner:
 
         #     # env_args[i]["common_reward"] = self.args.common_reward
         #     # env_args[i]["reward_scalarisation"] = self.args.reward_scalarisation
-
+        logger.console_logger.info("creating processes")
         self.ps = [
             Process(
                 target=env_worker,
@@ -61,6 +61,7 @@ class ParallelRunner:
         self.log_train_stats_t = -100000
 
     def setup(self, scheme, groups, preprocess, mac):
+        self.logger.console_logger.info("Setting up")
         self.new_batch = partial(
             EpisodeBatch,
             scheme,
@@ -95,6 +96,7 @@ class ParallelRunner:
             parent_conn.send(("close", None))
 
     def reset(self):
+        self.logger.console_logger.info("Resetting")
         self.batch = self.new_batch()
 
         # Reset the envs
@@ -181,14 +183,14 @@ class ParallelRunner:
                     data = parent_conn.recv()
                     # Remaining data for this current timestep
                     post_transition_data["reward"].append(data["reward"])
-
+                    
                     episode_returns[idx] += np.mean(data["reward"])
                     episode_lengths[idx] += 1
                     if not test_mode:
                         self.env_steps_this_run += 1
 
                     env_terminated = False
-                    if data["terminated"][0] or data["truncated"][0]:
+                    if data["terminated"]:
                         final_env_infos.append(data["info"])
                     if data["terminated"] and not data["info"].get(
                         "episode_limit", False
@@ -233,7 +235,7 @@ class ParallelRunner:
         cur_stats = self.test_stats if test_mode else self.train_stats
         cur_returns = self.test_returns if test_mode else self.train_returns
         log_prefix = "test_" if test_mode else ""
-        infos = [cur_stats] + final_env_infos[0] + env_stats
+        infos = [cur_stats] + final_env_infos + env_stats
         cur_stats.update(
             {
                 k: sum(d.get(k, 0) for d in infos)
@@ -320,14 +322,16 @@ def env_worker(remote, env_fn):
             avail_actions = env.get_avail_actions()
             obs = env._get_obs()
             
-            state = th.tensor(np.array([data['get_state'] for _ in range(env.num_agents)])).flatten().unsqueeze(0)
+            state = th.tensor(np.array([state for _ in range(env.num_agents)])).flatten().unsqueeze(0)
             
-            obs = th.tensor(np.array([obs for _, obs in data['_get_obs'].items()])).flatten().unsqueeze(0)
+            obs = th.tensor(np.array([o for _, o in obs.items()])).flatten().unsqueeze(0)
             
             if isinstance(reward, dict):
                 reward = tuple(reward.values())
+            else: 
+                reward = (reward,)
 
-            reward = th.tensor([reward]).unsqueeze(0)
+            # reward = th.tensor(reward).unsqueeze(0)
 
             remote.send(
                 {
@@ -347,9 +351,9 @@ def env_worker(remote, env_fn):
             state = env.get_state()
             obs = env._get_obs()
 
-            state = th.tensor(np.array([data['get_state'] for _ in range(env.num_agents)])).flatten().unsqueeze(0)
+            state = th.tensor(np.array([state for _ in range(env.num_agents)])).flatten().unsqueeze(0)
             
-            obs = th.tensor(np.array([obs for _, obs in data['_get_obs'].items()])).flatten().unsqueeze(0)
+            obs = th.tensor(np.array([o for _, o in obs.items()])).flatten().unsqueeze(0)
           
             remote.send(
                 {

@@ -21,6 +21,7 @@ class ACCritic(nn.Module):
 
     def forward(self, batch, t=None):
         inputs, bs, max_t = self._build_inputs(batch, t=t)
+        inputs.shape
         x = F.relu(self.fc1(inputs))
         x = F.relu(self.fc2(x))
         q = self.fc3(x)
@@ -32,7 +33,7 @@ class ACCritic(nn.Module):
         ts = slice(None) if t is None else slice(t, t+1)
         inputs = []
         # observations
-        inputs.append(batch["obs"][:, ts])
+        inputs.append(batch["obs"][:, ts].reshape(bs, max_t, self.n_agents, -1))
 
         inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
 
@@ -41,7 +42,7 @@ class ACCritic(nn.Module):
 
     def _get_input_shape(self, scheme):
         # observations
-        input_shape = scheme["obs"]["vshape"]
+        input_shape = scheme["obs"]["vshape"] // self.n_agents
         # agent id
         input_shape += self.n_agents
         return input_shape

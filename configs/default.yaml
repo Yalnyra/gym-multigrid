@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - algorithm: vdn
+  - algorithm: pac_ns
   - reward: fire_adjacent
   # - sweeper: wandb
   #   optional: True
@@ -39,7 +39,7 @@ hydra:
     chdir: True
 
 wandb: 
-  enabled: True
+  enabled: False
   entity: vinokur-eg-
   project: Wildfire
   mode: online
@@ -78,7 +78,7 @@ observations:
   True: partial_{$agent_view_size}
 
 
-run_id: ${name}_${agents}_${world_size}_${reward_type}_obs_${agent_view_size}
+run_id: ${name}_${agents}_${world_size}_${reward_type}_obs_${agent_view_size}${fire_spread}
 training_type: ???
 from_scratch: True
 evaluate: True

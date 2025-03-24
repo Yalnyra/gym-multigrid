@@ -72,7 +72,7 @@ class PPOLearner:
         old_pi = old_mac_out
         old_pi[mask == 0] = 1.0
 
-        old_pi_taken = th.gather(old_pi, dim=3, index=actions).squeeze(3)
+        old_pi_taken = th.gather(old_pi, dim=3, index=actions.unsqueeze(-1)).squeeze(3)
         old_log_pi_taken = th.log(old_pi_taken + 1e-10)
 
         for k in range(self.args.epochs):
@@ -92,7 +92,7 @@ class PPOLearner:
 
             pi[mask == 0] = 1.0
 
-            pi_taken = th.gather(pi, dim=3, index=actions).squeeze(3)
+            pi_taken = th.gather(pi, dim=3, index=actions.unsqueeze(-1)).squeeze(3)
             log_pi_taken = th.log(pi_taken + 1e-10)
 
             ratios = th.exp(log_pi_taken - old_log_pi_taken.detach())

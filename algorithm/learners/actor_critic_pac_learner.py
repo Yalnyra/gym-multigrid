@@ -67,7 +67,7 @@ class PACActorCriticLearner:
         # Calculate policy grad with mask
 
         pi[mask == 0] = 1.0
-        pi_taken = th.gather(pi, dim=3, index=actions).squeeze(3)
+        pi_taken = th.gather(pi, dim=3, index=actions.unsqueeze(-1)).squeeze(3)
         log_pi_taken = th.log(pi_taken + 1e-10)
 
         entropy = -th.sum(pi * th.log(pi + 1e-10), dim=-1)
@@ -139,7 +139,7 @@ class PACActorCriticLearner:
             target_vals = target_critic(batch, compute_all=True)[0][:, :-1]
             target_vals = target_vals.max(dim=3)[0]
 
-        target_vals = th.gather(target_vals, -1, actions[:, :-1]).squeeze(-1)
+        target_vals = th.gather(target_vals, -1, actions[:, :-1].unsqueeze(-1)).squeeze(-1)
 
         if self.args.standardise_rewards:
             target_vals = target_vals * th.sqrt(self.ret_ms.var) + self.ret_ms.mean
@@ -165,7 +165,7 @@ class PACActorCriticLearner:
         q = critic(batch)[0][:, :-1]
         v = self.state_value(batch)[:, :-1].squeeze(-1)
 
-        q_curr = th.gather(q, -1, actions).squeeze(-1)
+        q_curr = th.gather(q, -1, actions.unsqueeze(-1)).squeeze(-1)
         td_error = target_returns.detach() - q_curr
         masked_td_error = td_error * mask
         loss = (masked_td_error**2).sum() / mask.sum()
@@ -178,7 +178,7 @@ class PACActorCriticLearner:
         q_all = critic(batch, compute_all=True)[0][:, :-1]
         q_all = q_all.max(dim=3)[0]
 
-        q_all = th.gather(q_all, -1, actions).squeeze(-1)
+        q_all = th.gather(q_all, -1, actions.unsqueeze(-1)).squeeze(-1)
 
         advantage = q_all.detach() - v.detach()
 

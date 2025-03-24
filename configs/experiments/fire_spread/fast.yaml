@@ -1,5 +1,5 @@
 # @package _global_
-env:
-  alpha_transition: 0.5
-  beta_transition: 0.4
-  agent_beta_impact: 0.4
+alpha_transition: 0.5
+beta_transition: 0.4
+agent_beta_impact: 0.4
+fire_spread: _fire_fast

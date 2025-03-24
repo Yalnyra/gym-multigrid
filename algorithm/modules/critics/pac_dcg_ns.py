@@ -7,7 +7,7 @@ import torch as th
 import torch.nn as nn
 import torch_scatter
 
-from modules.agents import REGISTRY as agent_REGISTRY
+from algorithm.modules.agents import REGISTRY as agent_REGISTRY
 
 
 class DCGCriticNS:
@@ -340,7 +340,7 @@ class DCGCriticNS:
 
     def _get_input_shape(self, scheme):
         # state
-        input_shape = scheme["state"]["vshape"]
+        input_shape = scheme["state"]["vshape"] // self.n_agents
         return input_shape
 
     def _build_inputs(self, batch, t=None):
@@ -349,7 +349,12 @@ class DCGCriticNS:
         ts = slice(None) if t is None else slice(t, t + 1)
         inputs = []
         # state
-        inputs = batch["state"][:, ts].repeat(1, self.n_agents, 1)
+        # inputs = batch["state"][:, ts].repeat(1, self.n_agents, 1)
+
+        inputs = th.chunk(batch["obs"][:, ts], self.n_agents, dim=-1)
+        # print(obs[0].shape)
+        # inputs = [o.unsqueeze(2) for o in obs]
+
         return inputs
 
     def init_hidden(self, batch_size):

@@ -32,25 +32,29 @@ FIELDS = ['ID',
         #    'td_error', 
            '_total_timesteps',
           '_runtime'
+                    'train/mean_burnt trees',
+          'train/mean_reward',
+          'train/std_of_mean_reward',
+          'train/burnt trees', #avg over 5 runs
+          'train/mean_ep_length',
+        'train/burnt trees', 
+          'eval/burnt trees', #avg over 5 runs
+        
+        'eval/std_of_mean_reward',
+        'eval/mean_ep_length',
           ]
 
 HISTORY = [
           '_step',
-        #   'train/mean_burnt trees',
-        #   'train/mean_reward',
-        #   'train/std_of_mean_reward',
-        #   'train/burnt trees', #avg over 5 runs
-        #   'train/mean_ep_length',
-        # 'train/burnt_trees', 
+
         # 'pg_loss',
         # 'agent_0_0_critic_loss'
-        'eval/burnt_trees',
         'eval/mean_reward', #avg over 5 runs
-        #   'eval/std_of_mean_reward',
-        #   'eval/burnt trees', #avg over 5 runs
-        #   'eval/mean_burnt trees',
-        #   'eval/mean_ep_length',
-
+        # 'eval/burnt trees',
+        # 'train/burnt trees', 
+        # 'train/mean_burnt trees'
+        'eval/mean_burnt trees',
+        'eval/mean_ep_length',
 
 ]
 
@@ -110,7 +114,8 @@ def _load_data_from_wandb(ids=None, metric=None, date_after="2025-02-28##"):
         steps_dict = {}
         
         print("whole history: ",history_data.keys())
-        history_data = history_data.interpolate(method='index',) #'cubicspline'
+        print(len(history_data.index))
+        # history_data = history_data.interpolate(method='index',) #'cubicspline'
         # run_data.update({field: history_data.get(field, None) for field in FIELDS})
         print(run.name)
         run_data = {}
@@ -131,13 +136,20 @@ def _load_data_from_wandb(ids=None, metric=None, date_after="2025-02-28##"):
         #     row.filter(FIELDS)
         #     run_data.update(row.to_dict())
         # print(history_data.tail(1).to_dict())
+        # history_data.dropna()
+        history_data.filter(fields)
+        # best_hist_dict = history_data.add_prefix('95% ',axis=1).quantile(0.95)
+        # mean_hist_dict = history_data.add_prefix('Mean ',axis=1).mean()
+        # std_hist_dict = history_data.add_prefix('Std ',axis=1).std()
         hist_dict = history_data.tail(1)
         hist_dict.dropna()
         hist_dict = history_data.to_dict()
-        hist_dict = {field: hist_dict.get(field)[history_data.last_valid_index()] for field in fields if hist_dict.get(field) is not None}
+        # hist_dict = {field: hist_dict.get(field)[history_data.last_valid_index()] for field in fields if hist_dict.get(field) is not None}
+        # best_hist_dict = best_hist_dict
         print(hist_dict)
         # exit()
         run_data.update(hist_dict)
+        # run_data.update(best_hist_dict.)
         
         
 
@@ -188,7 +200,7 @@ def _load_data_from_wandb(ids=None, metric=None, date_after="2025-02-28##"):
 
 # Convert to a expertiment dict for each eval step 
 
-def load_marl_eval_history_data(equal_steps=None, output_filename='marl_eval_raw.json', algos=[], job_type='test', date_after="2025-03-12##"):
+def load_marl_eval_history_data(equal_steps=None, output_filename='marl_eval_raw.json', algos=[], job_type='test', date_before="2026-01-01", date_after="2025-03-12##"):
     """
     Use wandb API to load run history data for runs that have an equal number of eval steps.
     Formats the data into a nested dictionary with this structure:
@@ -215,18 +227,22 @@ def load_marl_eval_history_data(equal_steps=None, output_filename='marl_eval_raw
     """
     import json
     data = {}
+    alg = [{"config.name": str(name)} for name in algos]
     runs = api.runs(entity + "/" + project, order='-created_at',
                     filters={
                         "$and": [
-                            {"created_at": {"$lt": "2025-03-12##","$gt": "{}".format(date_after)}},
+                            # 
+                            {"created_at": {"$lt": "{}".format(date_before),"$gt": "{}".format(date_after)}},
                             # {"job_type": job_type}
                             # {"summary_metrics.eval.mean_reward": {"$ne": None} },
                                  ],
-                        # "$or": [
-                        #     # {"config.name": "vdn"},
-                        #     # {"config.name": "iql"},
-                        #     # {"config.name": "qmix"},
+                        "$or": 
+                        # [
+                        #     {"config.name": "vdn"},
+                        #     {"config.name": "iql"},
+                        #     {"config.name": "qmix"},
                         # ],
+                        alg,
                         },
                     )
     expected_steps = equal_steps
@@ -246,9 +262,9 @@ def load_marl_eval_history_data(equal_steps=None, output_filename='marl_eval_raw
         if not 'eval/mean_reward' in run.summary:
             continue
         
-        if run.summary.get('eval/mean_ep_length', 0) <= 1:
-            continue
-        history_data: pd.Series = run.history(samples=samples, pandas=True) 
+        # if run.summary.get('eval/mean_ep_length', 0) <= 1:
+        #     continue
+        history_data: pd.Series = run.history(keys=HISTORY,samples=samples, pandas=True) 
                                             #    index=['_step'], 
                                             #    columns=HISTORY[1:]
         print(history_data.head(2))
@@ -275,8 +291,11 @@ def load_marl_eval_history_data(equal_steps=None, output_filename='marl_eval_raw
         steps_dict = {}
         
         print("whole history: ",history_data.keys())
-        history_data = history_data.interpolate(method='index',) #'cubicspline'
+        # history_data = history_data.interpolate(method='index',) #'cubicspline'
         # for i, row in history_data.enumerate()
+        # if len(history_data.index) <= 1:
+        #     print(len(history_data.index))
+        #     continue
         for i, row in history_data.iterrows():
 
 
@@ -294,6 +313,18 @@ def load_marl_eval_history_data(equal_steps=None, output_filename='marl_eval_raw
             # Nest a scalar key into a list
                 print(type(v))
                 if pd.notna(v):
+                    if k in ['eval/mean_reward','train/mean_reward']:
+                        k = 'mean_norm_return'
+
+                    if k in [
+                             'eval/burnt trees',
+                             'train/burnt trees', 
+                             'eval/mean_burnt trees', 
+                             'train/mean_burnt trees'
+                             ]:
+                        
+                        k = 'win_rate'
+                        v = 1. - v
                     if k != '_runtime' and i not in allowed_steps:
                         allowed_steps.append(i)
                     steps_dict[step_label][k] = v
@@ -304,7 +335,21 @@ def load_marl_eval_history_data(equal_steps=None, output_filename='marl_eval_raw
         env_key = project  # project name as environment.
         # task_key = run.group if run.group is not None else "default"
         # TODO implement get_task_group method
-        task_key = 'default'
+        group_dict = {}
+        group_dict.update(run.config)
+        group_dict = {
+            'ID': run.id,
+            'group': run.group,
+            'name': str(run.name),
+            'algo': run.config.get('name', None),
+            'team size': run.config.get('agents', -5),
+            'eval team size': run.config.get('agents_inference', -5),
+            'seed': run.config.get('seed', None),
+            'eval_seed': run.config.get('eval_seed', None),
+            'job_type': run.job_type,
+        }
+        # group_dict.update(run.config._json_config)
+        task_key = get_run_group(group_dict)
         algo_key = run.config.get('name', 'algo_unknown')
         run_id = str(run.name)
 
@@ -325,20 +370,37 @@ def load_marl_eval_history_data(equal_steps=None, output_filename='marl_eval_raw
         json.dump(data, f, indent=2)
 
 
-def get_run_group(config):
-    pass
+def get_run_group(run_dict):
+    seed = str(run_dict.get('eval_seed', -1))
+    obs = str(run_dict.get('agent_view_size', 13))
+    job_type = str(run_dict['job_type'])
+    agents = str(run_dict.get("team size", '-1'))
+    world = str(run_dict.get('world_size', '-1'))
+    # _, n_agents, size, reward, suffix = 
+    
+    name = run_dict["name"].split('_')
+    if agents == '-1':
+        agents = name[1]
+    if world == '-1':
+        world = '13'
+    print(run_dict["name"].split('_'))
+    return "_".join([seed, agents, world, job_type])
 
 
-def plot_history_data(data, metrics, tasks=None):
+def plot_history_data(data, metrics, tasks=None, savedir='figures', savename='metrics'):
     """
     Plot history data for different metrics across different runs.
     Optionally separate graphs for different tasks.
     """
+    figures = []
+    if not os.path.exists(savedir):
+        os.mkdir("figures")      
+    plt.grid(alpha=0.3)    
     for env, env_data in data.items():
         for task, task_data in env_data.items():
             if tasks and task not in tasks:
                 continue
-            fig, axes = plt.subplots(1, len(metrics), figsize=(10, 6))
+            fig, axes = plt.subplots(1, len(metrics), figsize=(16, 6))
             for i, ax in enumerate(axes):
                 
                 for algo, algo_data in task_data.items():
@@ -350,13 +412,18 @@ def plot_history_data(data, metrics, tasks=None):
                         # at least 3 data points
                         if values.count(np.nan) < len(values) - 3:
                             ax.plot(steps, values, label=f'{algo} - {run_id}')
-                ax.xlabel('Steps')
-                ax.ylabel(metrics[i])
-                ax.title(f'{metrics[i]} over Steps for Task: {task}')
+                            ax.set_xlabel('Steps')
+                            ax.set_ylabel(metrics[i])
+                            ax.set_title(f'{metrics[i]} for Task: {task}')
+            savepath = os.path.join(savedir, savename + task + ".png")
+            print(f"Saving to {savepath}")
             fig.legend(bbox_to_anchor=(1.05, 1),
-                        loc='bottom left', borderaxespad=0.)
-            plt.grid(alpha=0.3)
-            plt.show()
+                        loc='lower left', borderaxespad=0.)
+            figures.append(fig)
+            fig.savefig(savepath, bbox_inches="tight")
+    
+    for fig in figures:
+        fig.show()
     # df = pd.concat(hist_list, ignore_index=True)
     # df = df.query("`val/loss` != 'NaN'")
 
@@ -392,14 +459,14 @@ def _load_data_from_subfolder(folder, metric, step=None, step_metric=None):
 
 # apply seaborne theme globally
 sns.set_theme()
-
+from matplotlib import rc
 FONTSIZE = 20 # 16
 TICK_FONTSIZE = 16
-matplotlib.rc('font', size=FONTSIZE)
-matplotlib.rc('axes', titlesize=FONTSIZE, labelsize=FONTSIZE)
-matplotlib.rc('xtick', labelsize=TICK_FONTSIZE)
-matplotlib.rc('ytick', labelsize=TICK_FONTSIZE)
-matplotlib.rc('legend', fontsize=FONTSIZE)
+rc('font', size=FONTSIZE)
+rc('axes', titlesize=FONTSIZE, labelsize=FONTSIZE)
+rc('xtick', labelsize=TICK_FONTSIZE)
+rc('ytick', labelsize=TICK_FONTSIZE)
+rc('legend', fontsize=FONTSIZE)
 
 
 def glob_re(pattern, strings):
@@ -627,9 +694,11 @@ def plot_learning_curves_all(exp_dict:dict,
 
 # Example usage:
 
-files = ['ppo_eval.json']
+files = ['vdn_qmix_iql_train.json']
 
-steps = None
+algos = ['vdn', 'iql', 'qmix', 'vdn_ns', 'iql_ns', 'qmix_ns']
+
+steps = 20
 
 if __name__ == '__main__': 
     
@@ -637,29 +706,31 @@ if __name__ == '__main__':
     # _load_data_from_wandb(date_after="2025-02-28##")
     # Uncomment to regenerate data
     # Date after is a MongoDB regex
-    # load_marl_eval_history_data(equal_steps=steps, output_filename=files[0], job_type="test",  date_after="2025-02-28##")
+    # load_marl_eval_history_data(equal_steps=steps, output_filename=files[0], job_type="train", algos=algos, date_before="2025-04-24##",  date_after="2025-03-16##")
 
 
     # # Load and process experiment outputs
     raw_dict = load_and_merge_json_dicts(files)
 
-    metrics = ['eval/mean_reward', 'eval/burnt trees']
+    # metrics = ['eval/mean_reward', 'eval/mean_burnt trees']
+    metrics = ['mean_norm_return','win_rate']
+    tasks = ['3456_10_13_train', '2004_10_13_train', '8007_10_13_train']
+    plot_history_data(raw_dict, metrics, tasks)
     
-    plot_history_data(raw_dict, metrics, tasks=['default'])
-
     # exit()
     processed_data = Plotting.process_data(raw_dict)
     # print(processed_data)
-    
+    # plot_learning_curves_all(processed_data, savename="_".join(algos))
     doctor = DiagnoseData(raw_data=processed_data)
     print(doctor.check_data())
+
     # print(doctor.check_runs(num_runs=[3]))
     # print(doctor.check_algo(['vdn', 'qmix', 'iql']))
     # print(doctor.check_metric(['eval/mean_reward']))
-    exit()
+    # exit()
     
     Plotting.task_sample_efficiency_curves(
-        processed_data=processed_data, env=project, task="default"
+        processed_data=processed_data, env=project, task=tasks[0]
     )
     (
         environment_comparison_matrix,
@@ -682,6 +753,6 @@ if __name__ == '__main__':
 
     Plotting.probability_of_improvement(
         environment_comparison_matrix,
-        algorithms_to_compare=[["qmix", "vdn"]],
+        algorithms_to_compare=[["iql", "vdn"]],
     )
     plt.show()

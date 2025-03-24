@@ -36,8 +36,10 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 def create_env(config:DictConfig, render_mode=None, inference=False):
     # Resize team size based on if run in inference or test
+    print("creatin ginfo")
     num_agents = config.agents if not inference else config.agents_inference
     seed = config.seed if not inference else config.eval_seed
+    print("creatin ginfo")
     env = WildfireEnv(
         render_mode=render_mode,
         agent_representation_mode=config.obs_type,
@@ -309,6 +311,7 @@ def run_sequential(config: dict, logger):
     args = SN(**config)
     runner = r_REGISTRY[args.runner](args=args, logger=logger)
     # Set up schemes and groups here
+    logger.console_logger.info("info")
     env_info = runner.get_env_info()
     args.n_agents = env_info["n_agents"]
     args.n_actions = env_info["n_actions"]
@@ -345,23 +348,24 @@ def run_sequential(config: dict, logger):
     else:
         scheme["reward"] = {"vshape": (env_info['n_agents'],)}
     groups = {"agents": (1,args.n_agents)}
-    # preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=args.n_actions)])}
-    preprocess = {}
+    preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=args.n_actions)])}
+    # preprocess = {}
+    logger.console_logger.info("buffer")
     buffer = ReplayBuffer(
         scheme,
         groups,
         args.buffer_size,
         env_info["episode_limit"] + 1,
         preprocess=preprocess,
-        device="cpu" if args.buffer_cpu_only else args.device,
+        device= args.device,
     )
-
+    logger.console_logger.info("mac")
     # Setup multiagent controller here
     mac = mac_REGISTRY[args.mac](buffer.scheme, groups, args)
-
+    logger.console_logger.info("runner")
     # Give runner the scheme
     runner.setup(scheme=scheme, groups=groups, preprocess=preprocess, mac=mac)
-
+    logger.console_logger.info("learner")
     # Learner
     learner = le_REGISTRY[args.learner](mac, buffer.scheme, logger, args)
 
@@ -452,12 +456,12 @@ def run_sequential(config: dict, logger):
             last_time = time.time()
 
             last_test_T = runner.t_env
-            runner.start_rec()
+            # runner.start_rec()
             for _ in range(n_test_runs):
                 runner.run(test_mode=True)
-            if args.save_replay:
-                runner.save_replay()
-            runner.stop_rec()
+            # if args.save_replay:
+            #     runner.save_replay()
+            # runner.stop_rec()
         if args.save_model and (
             runner.t_env - model_save_time >= args.save_model_interval
             or model_save_time == 0
@@ -515,10 +519,7 @@ def args_sanity_check(config):
 ##############################################
 @hydra.main(config_path="configs/", config_name="default", version_base="1.3")
 def main(cfg: DictConfig):
-    try:
-        console_logger = get_logger()
-    except:
-        pass
+    console_logger = get_logger(cfg.run_id)
     cfg = args_sanity_check(cfg)
 
 
@@ -540,7 +541,7 @@ def main(cfg: DictConfig):
         th.manual_seed(cfg.seed)
     
     logger = Logger(console_logger)
-    logger.setup_tb(cfg['log']+cfg['run_id'])
+    # logger.setup_tb(cfg['log']+cfg['run_id'])
     # exit()
     if cfg['wandb']['enabled']:
         # TODO - return to True once env will be pre-initialized 

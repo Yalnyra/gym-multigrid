@@ -75,14 +75,15 @@ class EpisodeRunner:
         self.stop_rec()
         self.env.close()
 
-    def reset(self):
+    def reset(self, test_mode=False):
         self.batch = self.new_batch()
         # self.frames = []
-        self.env.reset()
+        seed = self.args.eval_seed if test_mode else self.args.seed
+        self.env.reset(seed=seed)
         self.t = 0
 
     def run(self, test_mode=False):
-        self.reset()
+        self.reset(test_mode)
 
         terminated = False
         truncated = False
@@ -146,6 +147,7 @@ class EpisodeRunner:
             }
         if test_mode and self.args.render:
             print(f"Episode reward: {episode_return}")
+
         self.batch.update(last_data, ts=self.t)
 
         # Select actions in the last stored state
@@ -177,8 +179,35 @@ class EpisodeRunner:
         cur_returns.append(episode_return)
         # print(self.test_returns)
         if test_mode:
+            self.logger.log_stat(
+                log_prefix + "burnt trees",  last_burnt, self.t_env
+            )
+            self.logger.log_stat(
+                log_prefix + "unburnt trees",  last_unburnt, self.t_env
+            )
+            self.logger.log_stat(
+                log_prefix + "mean_reward",  episode_return / self.t, self.t_env
+            )
+            self.logger.log_stat(
+                log_prefix + "best_mean_reward",  float(np.quantile(cur_returns, q=[0.95])), self.t_env
+            )
+            # self.logger.log_stat(
+            #     log_prefix + "best_burnt trees",  np.quantile(cur_returns, q=[0.95]), self.t_env
+            # )
             self._log(cur_returns, cur_stats, log_prefix)
         elif self.t_env - self.log_train_stats_t >= self.args.runner_log_interval:
+            self.logger.log_stat(
+                log_prefix + "burnt trees",  last_burnt, self.t_env
+            )
+            self.logger.log_stat(
+                log_prefix + "unburnt trees",  last_unburnt, self.t_env
+            )
+            self.logger.log_stat(
+                log_prefix + "mean_reward",  episode_return / self.t, self.t_env
+            )
+            self.logger.log_stat(
+                log_prefix + "best_mean_reward",  float(np.quantile(cur_returns, q=[0.95])), self.t_env
+            )
             self._log(cur_returns, cur_stats, log_prefix)
             if hasattr(self.mac.action_selector, "epsilon"):
                 self.logger.log_stat(
