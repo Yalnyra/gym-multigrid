@@ -456,12 +456,12 @@ def run_sequential(config: dict, logger):
             last_time = time.time()
 
             last_test_T = runner.t_env
-            # runner.start_rec()
+            runner.start_rec()
             for _ in range(n_test_runs):
                 runner.run(test_mode=True)
-            # if args.save_replay:
-            #     runner.save_replay()
-            # runner.stop_rec()
+            if args.save_replay:
+                runner.save_replay()
+            runner.stop_rec()
         if args.save_model and (
             runner.t_env - model_save_time >= args.save_model_interval
             or model_save_time == 0

@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - algorithm: pac_ns
+  - algorithm: pac_dcg_ns
   - reward: fire_adjacent
   # - sweeper: wandb
   #   optional: True
@@ -56,7 +56,7 @@ agilerl:
 common_reward: False  # Run experiment with common reward setup
 reward_scalarisation: "sum"  # How to aggregate rewards to single common reward (only used if common_reward is True
 seed: 3456
-eval_seed: -1
+eval_seed: null
 # env:
 agents: 5
 agents_inference: 5

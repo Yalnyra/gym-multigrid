@@ -35,7 +35,7 @@ class ACCritic(nn.Module):
         # observations
         inputs.append(batch["obs"][:, ts].reshape(bs, max_t, self.n_agents, -1))
 
-        inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
+        # inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
 
         inputs = th.cat(inputs, dim=-1)
         return inputs, bs, max_t
@@ -44,5 +44,5 @@ class ACCritic(nn.Module):
         # observations
         input_shape = scheme["obs"]["vshape"] // self.n_agents
         # agent id
-        input_shape += self.n_agents
+        # input_shape += self.n_agents
         return input_shape

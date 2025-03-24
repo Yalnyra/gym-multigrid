@@ -180,8 +180,10 @@ class DCGCriticNS:
     def q_values(self, f_i, f_ij, actions):
         """Computes the Q-values for given utilities, payoffs and actions (Algorithm 2 in Boehmer et al., 2020)."""
         n_batches = actions.shape[0]
+        actions.shape
+        f_i.shape
         # Use the utilities for the chosen actions
-        values = f_i.gather(dim=-1, index=actions.unsqueeze(-1)).squeeze(dim=-1).mean(dim=-1)
+        values = f_i.gather(dim=-1, index=actions).squeeze(dim=-1).mean(dim=-1)
         # Use the payoffs for the chosen actions (if the CG contains edges)
         if len(self.edges_from) > 0:
             f_ij = f_ij.view(

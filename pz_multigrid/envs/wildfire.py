@@ -791,6 +791,7 @@ class WildfireEnv(MultiGridEnv):
              super().reset(seed=seed, options=options['state'])
         else:
              super().reset(seed=seed)
+        assert seed is None or seed > 0
         self._np_random = np.random.default_rng(seed)
         self._np_random_seed = seed
         start_pos = self._np_random.uniform(low=1, high=self.grid_size-1, size=(self.num_agents, 2))

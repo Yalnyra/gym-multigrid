@@ -45,6 +45,7 @@ class PACDCGLearner:
 
         rewards = batch["reward"][:, :-1]
         actions = batch["actions"][:, :]
+        actions = actions
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
@@ -64,14 +65,15 @@ class PACDCGLearner:
         advantages, critic_train_stats = self.train_critic_sequential(
             batch, rewards, critic_mask, terminated
         )
-        actions = actions[:, :-1]
+        actions = actions[:, :-1].unsqueeze(-1)
+        actions.shape
         advantages = advantages.detach()
-
+        advantages.shape
         # Calculate policy grad with mask
 
         pi[mask == 0] = 1.0
 
-        pi_taken = th.gather(pi, dim=3, index=actions.unsqueeze(-1)).squeeze(3)
+        pi_taken = th.gather(pi, dim=3, index=actions).squeeze(3)
         log_pi_taken = th.log(pi_taken + 1e-10)
 
         training_ratio_now = min(
@@ -81,7 +83,6 @@ class PACDCGLearner:
             training_ratio_now * self.args.final_entropy_coef
             + (1.0 - training_ratio_now) * self.args.initial_entropy_coef
         )
-
         entropy = -th.sum(pi * th.log(pi + 1e-10), dim=-1)
         pg_loss = (
             -((advantages * log_pi_taken + entropy_coef * entropy) * mask).sum()
@@ -140,7 +141,7 @@ class PACDCGLearner:
     def train_critic_sequential(self, batch, rewards, mask, terminated):
         actions = batch["actions"][:, :-1]
         mask_q = mask[:, :, 0].unsqueeze(-1)
-
+        actions = actions.unsqueeze(-1)
         # Optimise the state value
 
         v = self.state_value(batch)[:, :-1].squeeze(3)
@@ -164,7 +165,7 @@ class PACDCGLearner:
             target_out = []
             for i in range(self.n_agents):
                 current_actions = copy.deepcopy(greedy_actions)
-                current_actions[:, :, i] = actions[:, :, i].unsqueeze(-1)
+                current_actions[:, :, i] = actions[:, :, i]
                 self.target_critic.init_hidden(batch.batch_size)
                 target_q_values = []
                 for t in range(batch.max_seq_length - 1):

@@ -78,6 +78,12 @@ class ParallelRunner:
 
     def get_env_info(self):
         return self.env_info
+    
+    def start_rec(self):
+        self.parent_conns[0].send("start_rec")
+
+    def stop_rec(self):
+        self.parent_conns[0].send("stop_rec")
 
     # def save_replay(self):
     #     self.parent_conns[0].send(("save_replay", None))
@@ -234,7 +240,7 @@ class ParallelRunner:
 
         cur_stats = self.test_stats if test_mode else self.train_stats
         cur_returns = self.test_returns if test_mode else self.train_returns
-        log_prefix = "test_" if test_mode else ""
+        log_prefix = "eval/" if test_mode else "train/"
         infos = [cur_stats] + final_env_infos + env_stats
         cur_stats.update(
             {
@@ -372,10 +378,17 @@ def env_worker(remote, env_fn):
             remote.send(env.get_stats())
         elif cmd == "render":
             env.render()
+        elif cmd == "start_rec":
+            env.start_rec()
+        elif cmd == "stop_rec":
+            env.stop_rec()
         elif cmd == "save_replay":
-            env.save_replay()
+            log, run_id, t = data
+            env.save_replay(log, run_id, t)
+            
         else:
             raise NotImplementedError
+
 
 
 class CloudpickleWrapper:
