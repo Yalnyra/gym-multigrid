@@ -585,7 +585,7 @@ class WildfireEnv(MultiGridEnv):
         for a in self.agents:
             agent_obs[a] = np.append(
                 agent_obs[a].flatten(),
-                np.array(self.step_count / self.max_steps, dtype=np.float32),
+                np.array(self.step_count, dtype=np.int32),
             )
             # agent_obs[a] = agent_obs[a].flatten()
         return agent_obs
@@ -638,7 +638,7 @@ class WildfireEnv(MultiGridEnv):
         # flatten, and append normalized time step at the end of, state representation
         s = np.append(
             s.flatten(),
-            np.array(self.step_count / self.max_steps, dtype=np.float32),
+            np.array(self.step_count, dtype=np.int32),
         )
         # s = s.flatten()
         return s
@@ -752,7 +752,7 @@ class WildfireEnv(MultiGridEnv):
         # flatten, and append normalized time step at the end of, state representation
         state = np.append(
             state.flatten(),
-            np.array(time_step / self.max_steps, dtype=np.float32),
+            np.array(time_step, dtype=np.int32),
         )
         # state = state.flatten()
         return state
