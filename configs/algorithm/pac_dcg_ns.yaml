@@ -8,11 +8,11 @@ defaults:
 action_selector: "soft_policies"
 mask_before_softmax: True
 
-runner: "episode"
+runner: "parallel"
 
 buffer_size: 10
-batch_size_run: 1
-batch_size: 1
+batch_size_run: 4
+batch_size: 4
 
 # update the target network every {} training steps
 target_update_interval_or_tau: 0.01

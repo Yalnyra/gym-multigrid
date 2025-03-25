@@ -6,6 +6,7 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 import torch_scatter
+from math import factorial
 
 from algorithm.modules.agents import REGISTRY as agent_REGISTRY
 
@@ -161,7 +162,7 @@ class DCGCriticNS:
             for i in range(arg):
                 found = False
                 while not found:
-                    e = (randrange(self.n_agents), randrange(self.n_agents))
+                    e = (np.random.randint(self.n_agents), np.random.randint(self.n_agents))
                     if e[0] != e[1] and e not in edges and (e[1], e[0]) not in edges:
                         edges.append(e)
                         found = True

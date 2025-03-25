@@ -123,16 +123,16 @@ hydra:
     hydra:
     - hydra.mode=MULTIRUN
     task:
-    - algorithm=pac
+    - algorithm=pac_dcg_ns
     - train_epochs=100_000
     - reward=fire_adjacent
     - common_reward=True
-    - experiments/team_size=default
-    - use_rnn=True
+    - experiments/team_size=fifteen
+    - use_rnn=False
     - experiments/obs=range_six,range_ten,default
-    - wandb.enabled=True
+    - wandb.enabled=False
     - eval_seed=3456,2004,8007
-    - checkpoint=pac_sarsa_5_13_fire_adjacent_obs_10
+    - checkpoint=pac_sarsa_dcg_ns_10_13_fire_adjacent_obs_10
     - save_replay=True
     - evaluate=True
     - runner=episode
@@ -141,7 +141,7 @@ hydra:
   job:
     name: train_test_wildfire
     chdir: true
-    override_dirname: algorithm=pac,batch_size=1,batch_size_run=1,checkpoint=pac_sarsa_5_13_fire_adjacent_obs_10,common_reward=True,eval_seed=3456,2004,8007,evaluate=True,experiments/obs=range_six,range_ten,default,experiments/team_size=default,reward=fire_adjacent,runner=episode,save_replay=True,train_epochs=100_000,use_rnn=True,wandb.enabled=True
+    override_dirname: algorithm=pac_dcg_ns,batch_size=1,batch_size_run=1,checkpoint=pac_sarsa_dcg_ns_10_13_fire_adjacent_obs_10,common_reward=True,eval_seed=3456,2004,8007,evaluate=True,experiments/obs=range_six,range_ten,default,experiments/team_size=fifteen,reward=fire_adjacent,runner=episode,save_replay=True,train_epochs=100_000,use_rnn=False,wandb.enabled=False
     id: ???
     num: ???
     config_name: default
@@ -169,11 +169,11 @@ hydra:
     output_dir: ???
     choices:
       experiments/fire_spread: default
-      experiments/team_size: default
+      experiments/team_size: fifteen
       experiments/obs: default
       experiments/env_size: default
       reward: fire_adjacent
-      algorithm: pac
+      algorithm: pac_dcg_ns
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: default
@@ -185,7 +185,7 @@ hydra:
       hydra/output: default
   verbose: false
 wandb:
-  enabled: true
+  enabled: false
   entity: vinokur-eg-
   project: Wildfire
   mode: online
@@ -198,9 +198,9 @@ agilerl:
 common_reward: true
 reward_scalarisation: mean
 seed: 3456
-eval_seed: -1
-agents: 5
-agents_inference: 5
+eval_seed: null
+agents: 15
+agents_inference: 15
 flashpoints: 3
 world_size: 13
 alpha_transition: 0.3
@@ -220,7 +220,8 @@ training_type: ???
 from_scratch: true
 evaluate: true
 model_save_path: out/models/
-checkpoint: pac_sarsa_5_13_fire_adjacent_obs_10
+checkpoint: pac_sarsa_dcg_ns_10_13_fire_adjacent_obs_10
+use_rnn: false
 log: out/logs/
 train_epochs: 100000
 memory_size: 10000
@@ -251,7 +252,7 @@ local_results_path: ${model_save_path}
 gamma: 0.99
 batch_size: 1
 buffer_size: 10
-lr: 0.0003
+lr: 0.0005
 optim_alpha: 0.99
 optim_eps: 1.0e-05
 grad_norm_clip: 10
@@ -259,7 +260,7 @@ add_value_last_step: true
 n_agents: ${agents}
 n_actions: 4
 state_shape: ''
-agent: rnn
+agent: rnn_ns
 hidden_dim: 64
 obs_agent_id: false
 obs_last_action: false
@@ -271,16 +272,22 @@ mask_before_softmax: true
 target_update_interval_or_tau: 0.01
 obs_individual_obs: false
 agent_output_type: pi_logits
-learner: pac_learner
-initial_entropy_coef: 20.0
-final_entropy_coef: 0.01
-entropy_end_ratio: 0.8
-use_rnn: true
+learner: pac_dcg_learner
 standardise_rewards: false
 q_nstep: 10
-use_subsampling: false
-critic_type: pac_critic
-state_value_type: cv_critic
-name: pac_sarsa
+critic_type: pac_dcg_critic_ns
+state_value_type: cv_critic_ns
+initial_entropy_coef: 30.0
+final_entropy_coef: 0.01
+entropy_end_ratio: 0.8
+cg_edges: full
+cg_utilities_hidden_dim: null
+cg_payoffs_hidden_dim: null
+cg_payoff_rank: null
+duelling: false
+msg_anytime: true
+msg_iterations: 8
+msg_normalized: true
+name: pac_sarsa_dcg_ns
 on_policy: false
 fire_spread: ''

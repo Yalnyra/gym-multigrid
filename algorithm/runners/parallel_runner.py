@@ -5,6 +5,7 @@ import numpy as np
 
 from algorithm.components.episode_buffer import EpisodeBatch
 from train_test_wildfire import create_env
+from pz_multigrid.envs import WildfireEnv
 from omegaconf import DictConfig
 import os
 from wandb import Video
@@ -287,6 +288,9 @@ class ParallelRunner:
                     np.array(returns)[:, i].std(),
                     self.t_env,
                 )
+                self.logger.log_stat(
+            prefix + "best_mean_reward",  float(np.quantile(returns, q=[0.95])), self.t_env
+                    )       
             total_returns = np.array(returns).sum(axis=-1)
             self.logger.log_stat(
                 prefix + "total_mean_reward", total_returns.mean(), self.t_env
@@ -296,10 +300,10 @@ class ParallelRunner:
             )
         returns.clear()
         self.logger.log_stat(
-                prefix + "burnt trees", np.mean(stats['burnt trees']), self.t_env
+                prefix + "burnt trees", np.sum(stats['burnt trees']) / (np.sum(stats['burnt trees']) + np.sum(stats['unburnt trees'])), self.t_env
             )
         self.logger.log_stat(
-            prefix + "unburnt trees", np.mean(stats['unburnt trees']), self.t_env
+            prefix + "unburnt trees", np.sum(stats['unburnt trees']) / (np.sum(stats['burnt trees']) + np.sum(stats['unburnt trees'])), self.t_env
         )
         for k, v in stats.items():
             if k != "n_episodes":

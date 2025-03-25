@@ -1327,7 +1327,6 @@ class WildfireEnv(MultiGridEnv):
         self.info = {a: self.info for a in self.agents}
         terminated = {idx: True if val==1. else False for idx, val in enumerate(terminated)}
         truncated = {idx: True if val==1. else False for idx, val in enumerate(truncated)}
-        print(self.step_count)
         return self.obs, rewards, terminated, truncated, self.info
 
     def render(self, close=False, highlight=False, tile_size=TILE_PIXELS):

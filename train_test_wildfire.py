@@ -21,6 +21,7 @@ from algorithm.components.transforms import OneHot
 from algorithm.learners import REGISTRY as le_REGISTRY
 from algorithm.runners import REGISTRY as r_REGISTRY
 from algorithm.utils.general_reward_support import test_alg_config_supports_reward
+from algorithm.utils.load_utils import find_model_path
 from algorithm.utils.logging import Logger, get_logger
 from algorithm.utils.timehelper import time_left, time_str
 
@@ -116,7 +117,7 @@ def test_model(env, config:DictConfig, model=None):
         frac_burned = []
         frac_unburned = []
         while not terminated[0]:
-            agents = list(range(config['env']['agents']))
+            agents = list(range(config['agents']))
             actions = {agent: env.action_space().sample() for agent in agents}
             inference_dt = time.time()
             # Sample actual actions
@@ -166,7 +167,7 @@ def test_model(env, config:DictConfig, model=None):
         frac_burned = []
         frac_unburned = []
     env.save_replay()
-    save_frames_as_gif(frames=frames, path=config['log'], filename=f"{config['run_id']}", ep=config['train_epochs'], fps=5)
+    # save_frames_as_gif(frames=frames, path=config['log'], filename=f"{config['run_id']}", ep=config['train_epochs'], fps=5)
     if config['wandb']['enabled']:
         wandb.log({"video": wandb.Video(f"{config['log']}/{config['run_id']}-{config['train_epochs']}.gif", format="gif")})
         
@@ -296,13 +297,13 @@ def test(config:DictConfig):
 
 
 def evaluate_sequential(args, runner):
-    runner.start_rec()
+    # runner.start_rec()
     for _ in range(args.episodes):
         runner.run(test_mode=True)
 
-    if args.save_replay:
-        runner.save_replay()
-    runner.stop_rec()
+    # if args.save_replay:
+    #     runner.save_replay()
+    # runner.stop_rec()
     runner.close_env()
 
 
@@ -323,16 +324,16 @@ def run_sequential(config: dict, logger):
     scheme = {
         "state": {"vshape": env_info["state_shape"]},
         "obs": {"vshape": env_info["obs_shape"], 
-                # "group": "agents"
+                "group": "agents"
                 },
         "actions": {
                     "vshape": env_info['n_agents'],
                     # "vshape": (env_info['n_agents'], env_info['n_actions']),
-                    # "group": "agents", 
+                    "group": "agents", 
                     "dtype": th.long},
-        # "actor_hidden_states": {"vshape": (args.hidden_dim,), 
-        #                         # "group": "agents"
-        #                         },
+        "actor_hidden_states": {"vshape": (args.hidden_dim,), 
+                                # "group": "agents"
+                                },
         "avail_actions": {
             "vshape": (env_info["n_agents"],env_info["n_actions"]),
             # "vshape": (env_info["n_actions"],),
@@ -347,7 +348,7 @@ def run_sequential(config: dict, logger):
         scheme["reward"] = {"vshape": (1,)}
     else:
         scheme["reward"] = {"vshape": (env_info['n_agents'],)}
-    groups = {"agents": (1,args.n_agents)}
+    groups = {"agents": args.n_agents}
     preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=args.n_actions)])}
     # preprocess = {}
     logger.console_logger.info("buffer")
@@ -456,12 +457,12 @@ def run_sequential(config: dict, logger):
             last_time = time.time()
 
             last_test_T = runner.t_env
-            runner.start_rec()
+            # runner.start_rec()
             for _ in range(n_test_runs):
                 runner.run(test_mode=True)
-            if args.save_replay:
-                runner.save_replay()
-            runner.stop_rec()
+            # if args.save_replay:
+            #     runner.save_replay()
+            # runner.stop_rec()
         if args.save_model and (
             runner.t_env - model_save_time >= args.save_model_interval
             or model_save_time == 0

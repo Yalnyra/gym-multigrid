@@ -179,17 +179,15 @@ class EpisodeRunner:
         cur_returns.append(episode_return)
         # print(self.test_returns)
         if test_mode:
+            print("Number of episodes collected: ", cur_stats["n_episodes"])
+            print(f"Return so far:  {round(np.mean(cur_returns), 3)} +/- {round(np.std(cur_returns), 3)}" )
+
+
             self.logger.log_stat(
                 log_prefix + "burnt trees",  last_burnt, self.t_env
             )
             self.logger.log_stat(
                 log_prefix + "unburnt trees",  last_unburnt, self.t_env
-            )
-            self.logger.log_stat(
-                log_prefix + "mean_reward",  episode_return / self.t, self.t_env
-            )
-            self.logger.log_stat(
-                log_prefix + "best_mean_reward",  float(np.quantile(cur_returns, q=[0.95])), self.t_env
             )
             # self.logger.log_stat(
             #     log_prefix + "best_burnt trees",  np.quantile(cur_returns, q=[0.95]), self.t_env
@@ -219,34 +217,37 @@ class EpisodeRunner:
 
     def _log(self, returns, stats, prefix):
         print("Logging stat:", returns, stats, prefix)
-        if self.args.common_reward:
-            self.logger.log_stat(prefix + "mean_reward", np.mean(returns), self.t_env)
-            self.logger.log_stat(prefix + "std_of_mean_reward", np.std(returns), self.t_env)
-        else:
-            for i in range(self.args.n_agents):
-                self.logger.log_stat(
-                    prefix + f"agent_{i}_reward",
-                    np.array(returns)[:, i].mean(),
-                    self.t_env,
-                )
-                self.logger.log_stat(
-                    prefix + f"agent_{i}_std_reward",
-                    np.array(returns)[:, i].std(),
-                    self.t_env,
-                )
-            total_returns = np.array(returns).sum(axis=-1)
-            self.logger.log_stat(
-                prefix + "total_mean_reward", total_returns.mean(), self.t_env
-            )
-            self.logger.log_stat(
-                prefix + "std_of_total_mean_reward", total_returns.std(), self.t_env
-            )
+        # if self.args.common_reward:
+        self.logger.log_stat(prefix + "mean_reward", np.mean(returns), self.t_env)
+        self.logger.log_stat(prefix + "std_of_mean_reward", np.std(returns), self.t_env)
+        # else:
+        #     for i in range(self.args.n_agents):
+        #         self.logger.log_stat(
+        #             prefix + f"agent_{i}_reward",
+        #             np.array(returns)[:, i].mean(),
+        #             self.t_env,
+        #         )
+        #         self.logger.log_stat(
+        #             prefix + f"agent_{i}_std_reward",
+        #             np.array(returns)[:, i].std(),
+        #             self.t_env,
+        #         )
+        # # total_returns = np.array(returns).sum(axis=-1)
+        # self.logger.log_stat(
+        #     prefix + "total_mean_reward", total_returns.mean(), self.t_env
+        # )
+        # self.logger.log_stat(
+        #     prefix + "std_of_total_mean_reward", total_returns.std(), self.t_env
+        # )
+        self.logger.log_stat(
+            prefix + "best_mean_reward",  float(np.quantile(returns, q=[0.95])), self.t_env
+        )
         returns.clear()
         self.logger.log_stat(
-                prefix + "burnt trees", np.mean(stats['burnt trees']), self.t_env
+                prefix + "burnt trees", stats['burnt trees'] / (stats['burnt trees'] + stats['unburnt trees']), self.t_env
             )
         self.logger.log_stat(
-            prefix + "unburnt trees", np.mean(stats['unburnt trees']), self.t_env
+            prefix + "unburnt trees", stats['unburnt trees'] / (stats['burnt trees'] + stats['unburnt trees']), self.t_env
         )
         for k, v in stats.items():
             if k != "n_episodes":
