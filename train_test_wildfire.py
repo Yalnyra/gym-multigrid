@@ -114,6 +114,7 @@ def test_model(env, config:DictConfig, model=None):
         seed = config.get("seed", None)
         (obs, info) = env.reset(seed)
         ep_reward = 0.
+        mean_reward_per_agent = 0.
         frac_burned = []
         frac_unburned = []
         while not terminated[0]:

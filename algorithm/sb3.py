@@ -7,6 +7,7 @@ from stable_baselines3.common.callbacks import (
 from wandb.integration.sb3 import WandbCallback
 from omegaconf import DictConfig
 from stable_baselines3.common.callbacks import BaseCallback
+import numpy as np
 
 class TensorboardCallback(BaseCallback):
     """
@@ -40,24 +41,36 @@ class TensorboardCallback(BaseCallback):
         # self.training_env = env
         self.dt_step_target = 0
         self.total_targets = 0
+        self.burnt_trees = []
+        # self.unburnt_trees = []
+        self.reward = []
+        self.stats = {
+            "burnt trees": [],
+            "unburnt trees": [],
+        }
         self.dt_array_target = []
+        # self.marl_logger = logger
 
     def _on_step(self) -> bool:
         # obs, reward, done, info = env.step(action)
-        # dt_step_target += 1
+        self.dt_step_target += 1
         info = self.locals.get('info')
         # self.locals.get('reward')
         rewards = self.locals.get('rewards')
         if rewards is not None:
             for v in rewards:
-                self.logger.record('train/reward', v)
+                self.reward.append(v)
+                # self.logger.record('train/reward', v)
                 # self.logger.record_mean('train/mean_reward', v)
+        
         if info is not None:
             frac_burned = info[0]['burnt_trees']
             frac_unburned = info[0]['unburnt_trees']
             self.logger.record('train/burnt trees', frac_burned)
+            self.stats['burnt trees'].append(frac_burned)
             # self.logger.record_mean('train/mean burnt trees', frac_burned)
             self.logger.record('train/unburnt trees', frac_unburned)
+            self.stats['unburnt trees'].append(frac_unburned)
             # self.logger.record_mean('train/reward',self.locals.get('reward'))
             
         return True
@@ -65,6 +78,25 @@ class TensorboardCallback(BaseCallback):
     def _on_training_end(self):
         pass
         #self.logger.record
+    def _on_rollout_end(self):
+        reward = np.array(self.reward)
+        self.logger.record(
+        "train/best_mean_reward",  float(np.quantile(self.reward, q=[0.95])))       
+            
+        self.logger.record(
+            "train/mean_reward", reward.mean()
+        )
+        self.logger.record(
+            "train/std_of_mean_reward", reward.std()
+        )
+        self.reward = []
+        self.logger.record(
+                 "train/mean_burnt trees", np.sum(self.stats['burnt trees']) / (np.sum(self.stats['burnt trees']) + np.sum(self.stats['unburnt trees']))
+            )
+        self.logger.record(
+            "train/mean_unburnt trees", np.sum(self.stats['unburnt trees']) / (np.sum(self.stats['burnt trees']) + np.sum(self.stats['unburnt trees']))
+        )
+        return 
 
 def model_PPO(env, config:DictConfig):
     nn_t = config['encoder_config']['hidden_size']
