@@ -1,3 +1,6 @@
+# @package _global_
+defaults:
+  - pymarl
 # --- Central-V specific parameters ---
 
 action_selector: "soft_policies"

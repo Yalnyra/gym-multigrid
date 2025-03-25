@@ -1,3 +1,6 @@
+# @package _global_
+defaults:
+  - pymarl
 # --- IA2C specific parameters ---
 
 action_selector: "soft_policies"
