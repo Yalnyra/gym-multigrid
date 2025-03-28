@@ -123,25 +123,20 @@ hydra:
     hydra:
     - hydra.mode=MULTIRUN
     task:
-    - algorithm=pac_dcg_ns
+    - algorithm=iql
     - train_epochs=100_000
     - reward=fire_adjacent
     - common_reward=True
-    - experiments/team_size=fifteen
-    - use_rnn=False
-    - experiments/obs=range_six,range_ten,default
-    - wandb.enabled=False
+    - experiments/team_size=ten
+    - experiments/obs=range_six,range_ten
+    - experiments/fire_spread=default,fast,inefficient
     - eval_seed=3456,2004,8007
-    - checkpoint=pac_sarsa_dcg_ns_10_13_fire_adjacent_obs_10
-    - save_replay=True
-    - evaluate=True
-    - runner=episode
-    - batch_size_run=1
-    - batch_size=1
+    - checkpoint=iql_10_13_fire_adjacent_obs_6, iql_10_13_agent_adjacent_obs_10, iql_10_13_fire_adjacent_obs_10
   job:
     name: train_test_wildfire
     chdir: true
-    override_dirname: algorithm=pac_dcg_ns,batch_size=1,batch_size_run=1,checkpoint=pac_sarsa_dcg_ns_10_13_fire_adjacent_obs_10,common_reward=True,eval_seed=3456,2004,8007,evaluate=True,experiments/obs=range_six,range_ten,default,experiments/team_size=fifteen,reward=fire_adjacent,runner=episode,save_replay=True,train_epochs=100_000,use_rnn=False,wandb.enabled=False
+    override_dirname: algorithm=iql,checkpoint=iql_10_13_fire_adjacent_obs_6, iql_10_13_agent_adjacent_obs_10,
+      iql_10_13_fire_adjacent_obs_10,common_reward=True,eval_seed=3456,2004,8007,experiments/fire_spread=default,fast,inefficient,experiments/obs=range_six,range_ten,experiments/team_size=ten,reward=fire_adjacent,train_epochs=100_000
     id: ???
     num: ???
     config_name: default
@@ -169,11 +164,11 @@ hydra:
     output_dir: ???
     choices:
       experiments/fire_spread: default
-      experiments/team_size: fifteen
-      experiments/obs: default
+      experiments/team_size: ten
+      experiments/obs: range_ten
       experiments/env_size: default
       reward: fire_adjacent
-      algorithm: pac_dcg_ns
+      algorithm: iql
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: default
@@ -197,10 +192,11 @@ agilerl:
   _target_: algorithm.agilerl.train
 common_reward: true
 reward_scalarisation: mean
-seed: 3456
-eval_seed: null
-agents: 15
-agents_inference: 15
+seed: 8001
+eval_seed: 3456
+env: wildfire
+agents: 10
+agents_inference: 10
 flashpoints: 3
 world_size: 13
 alpha_transition: 0.3
@@ -208,8 +204,8 @@ beta_transition: 0.8
 agent_beta_impact: 0.8
 obs_type: typed_one_hot
 reward_type: fire_adjacent
-agent_view_size: ${world_size}
-partial_obs: false
+agent_view_size: 10
+partial_obs: true
 max_steps: 25
 cooperative_reward: true
 observations:
@@ -218,18 +214,39 @@ observations:
 run_id: ${name}_${agents}_${world_size}_${reward_type}_obs_${agent_view_size}${fire_spread}
 training_type: ???
 from_scratch: true
-evaluate: true
+evaluate: false
+batch_size: 1
+batch_size_run: 1
+eval_mode: open
+local_results_path: ${model_save_path}
+open: true
+n_uncontrolled: 2
+uncntrl_agents:
+  iql:
+    agent_loader: rnn_eval_agent_loader
+    agent_path: iql_ns_10_13_fire_adjacent_obs_10
+    load_step: last
+    n_agents_to_populate: 10
+    test_mode: true
+  qmix:
+    agent_loader: rnn_eval_agent_loader
+    agent_path: qmix_ns_10_13_fire_adjacent_obs_10
+    load_step: last
+    n_agents_to_populate: 10
+    test_mode: true
+trainable_agents_mask_actor: true
+trainable_agents_mask_critic: false
+mac: basic_mac
 model_save_path: out/models/
-checkpoint: pac_sarsa_dcg_ns_10_13_fire_adjacent_obs_10
-use_rnn: false
+base_uncntrl_path: D:/python_course/gym-multigrid/${model_save_path}
+checkpoint: ''
+use_rnn: true
 log: out/logs/
 train_epochs: 100000
 memory_size: 10000
 valid_interval: 10000
-batch_size_run: 1
 episodes: 15
 runner: episode
-mac: basic_mac
 env_args: {}
 test_nepisode: ${episodes}
 test_interval: ${valid_interval}
@@ -248,11 +265,9 @@ checkpoint_path: vdn_10_13_fire_adjacent_obs_10
 render: false
 load_step: 0
 save_replay: true
-local_results_path: ${model_save_path}
 gamma: 0.99
-batch_size: 1
-buffer_size: 10
-lr: 0.0005
+buffer_size: 5000
+lr: 0.0003
 optim_alpha: 0.99
 optim_eps: 1.0e-05
 grad_norm_clip: 10
@@ -260,34 +275,25 @@ add_value_last_step: true
 n_agents: ${agents}
 n_actions: 4
 state_shape: ''
-agent: rnn_ns
-hidden_dim: 64
+agent: rnn
+hidden_dim: 128
 obs_agent_id: false
 obs_last_action: false
 repeat_id: 1
 label: default_label
 hypergroup: null
-action_selector: soft_policies
-mask_before_softmax: true
-target_update_interval_or_tau: 0.01
+action_selector: epsilon_greedy
+epsilon_start: 1.0
+epsilon_finish: 0.05
+epsilon_anneal_time: 200000
+evaluation_epsilon: 0.0
+target_update_interval_or_tau: 200
 obs_individual_obs: false
-agent_output_type: pi_logits
-learner: pac_dcg_learner
-standardise_rewards: false
-q_nstep: 10
-critic_type: pac_dcg_critic_ns
-state_value_type: cv_critic_ns
-initial_entropy_coef: 30.0
-final_entropy_coef: 0.01
-entropy_end_ratio: 0.8
-cg_edges: full
-cg_utilities_hidden_dim: null
-cg_payoffs_hidden_dim: null
-cg_payoff_rank: null
-duelling: false
-msg_anytime: true
-msg_iterations: 8
-msg_normalized: true
-name: pac_sarsa_dcg_ns
-on_policy: false
+agent_output_type: q
+learner: q_learner
+standardise_returns: false
+standardise_rewards: true
+double_q: true
+mixer: null
+name: iql
 fire_spread: ''

@@ -9,9 +9,9 @@ mask_before_softmax: True
 
 runner: "parallel"
 
-buffer_size: 256
-batch_size_run: 8
-batch_size: 256
+buffer_size: 32
+batch_size_run: 1
+batch_size: 1
 
 save_extra_stats: False
 
@@ -23,7 +23,7 @@ obs_team_composition: False
 
 agent_output_type: "pi_logits"
 learner: "poam_learner"
-mac: "agent_owned_mac"
+mac: "open_train_mac"
 agent: "rnn_poam"
 critic_type: "poam_critic"
 

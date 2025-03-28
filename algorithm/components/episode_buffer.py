@@ -35,6 +35,7 @@ class EpisodeBatch:
                 transforms = preprocess[k][1]
 
                 vshape = self.scheme[k]["vshape"]
+                # vshape = preprocess[k][2]
                 dtype = self.scheme[k]["dtype"]
                 for transform in transforms:
                     vshape, dtype = transform.infer_output_info(vshape, dtype)
@@ -43,8 +44,8 @@ class EpisodeBatch:
                     "vshape": vshape,
                     "dtype": dtype
                 }
-                if "group" in self.scheme[k]:
-                    self.scheme[new_k]["group"] = self.scheme[k]["group"]
+                # if "group" in self.preprocess[k]:
+                self.scheme[new_k]["group"] = self.preprocess[k][2]
                 if "episode_const" in self.scheme[k]:
                     self.scheme[new_k]["episode_const"] = self.scheme[k]["episode_const"]
 
@@ -106,7 +107,7 @@ class EpisodeBatch:
             if type(v) == list:
                 v = th.tensor(np.array(v), dtype=dtype, device=self.device)
             # print("Slices shape ", target[k].shape)
-            self._check_safe_view(v, target[k][_slices])
+            # self._check_safe_view(v, target[k][_slices])
             # print("Slices shape ", target[k][_slices])
             target[k][_slices] = v.view_as(target[k][_slices])
 
@@ -116,6 +117,7 @@ class EpisodeBatch:
                 for transform in self.preprocess[k][1]:
                     v = transform.transform(v)
                 target[new_k][_slices] = v.view_as(target[new_k][_slices])
+                print("One hot", target[new_k][_slices].shape)
 
     def _check_safe_view(self, v, dest):
         if len(v.shape) == 0:

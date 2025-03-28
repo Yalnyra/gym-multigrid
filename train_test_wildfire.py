@@ -324,21 +324,23 @@ def run_sequential(config: dict, logger):
     # TODO - replace (n,) tuple
     scheme = {
         "state": {"vshape": env_info["state_shape"]},
-        "obs": {"vshape": env_info["obs_shape"], 
+        "obs": {"vshape": env_info["obs_shape"] // env_info['n_agents'], 
+        # "obs": {"vshape": env_info["obs_shape"], 
                 "group": "agents"
                 },
         "actions": {
                     "vshape": env_info['n_agents'],
+                    # "vshape": (1,),
                     # "vshape": (env_info['n_agents'], env_info['n_actions']),
-                    "group": "agents", 
+                    # "group": "agents", 
                     "dtype": th.long},
         "actor_hidden_states": {"vshape": (args.hidden_dim,), 
-                                # "group": "agents"
+                                "group": "agents"
                                 },
         "avail_actions": {
-            "vshape": (env_info["n_agents"],env_info["n_actions"]),
+            "vshape": (env_info["n_actions"]),
             # "vshape": (env_info["n_actions"],),
-            # "group": "agents",
+            "group": "agents",
             "dtype": th.int,
         },
         # "reward": {"vshape": (env_info["n_agents"],)},
@@ -347,10 +349,19 @@ def run_sequential(config: dict, logger):
     # For individual rewards in gymmai reward is of shape (1, n_agents)
     if args.common_reward:
         scheme["reward"] = {"vshape": (1,)}
-    else:
+    else:   
         scheme["reward"] = {"vshape": (env_info['n_agents'],)}
     groups = {"agents": args.n_agents}
-    preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=args.n_actions)])}
+
+    if args.open: # track a mask relating to whether agents are trainable or not
+        scheme["trainable_agents"] = {"vshape": (env_info['n_agents'],), 
+                                    # "group": "agents", 
+                                    "dtype": th.bool}
+    
+    if "liam" in args.name or "poam" in args.name and not args.open:
+        scheme['actor_hidden_states']['vshape'] = (args.hidden_dim,) 
+    
+    preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=args.n_actions, repeats=args.agents)], "agents")}
     # preprocess = {}
     logger.console_logger.info("buffer")
     buffer = ReplayBuffer(

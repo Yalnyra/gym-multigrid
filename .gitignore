@@ -18,3 +18,4 @@ wandb/
 .hydra/
 events.*
 *.log
+metrics/*

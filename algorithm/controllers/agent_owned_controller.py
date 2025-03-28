@@ -39,7 +39,8 @@ class AgentOwnedMAC:
         return agent_outs, hidden_states
 
     def init_hidden(self, batch_size):
-        return self.agent.init_hidden(batch_size).expand(batch_size, -1, -1)  # bav
+        return self.agent.init_hidden(batch_size)
+        # .expand(batch_size, -1, -1)  # bav
 
     def parameters(self):
         return self.agent.parameters()
@@ -60,7 +61,7 @@ class AgentOwnedMAC:
         self.agent = agent_REGISTRY[self.args.agent](input_shape, self.args)
 
     def _get_input_shape(self, scheme):
-        input_shape = scheme["obs"]["vshape"]
+        input_shape = scheme["obs"]["vshape"] // self.n_agents
         if self.args.obs_last_action:
             input_shape += scheme["actions_onehot"]["vshape"][0]
         if self.args.obs_agent_id:

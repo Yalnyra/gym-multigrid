@@ -10,16 +10,18 @@ from omegaconf import DictConfig
 import os
 from wandb import Video
 import torch as th
+from types import SimpleNamespace as SN
 
 
 # Based (very) heavily on SubprocVecEnv from OpenAI Baselines
 # https://github.com/openai/baselines/blob/master/baselines/common/vec_env/subproc_vec_env.py
 class ParallelRunner:
-    def __init__(self, args, logger):
+    def __init__(self, args: SN, logger):
         self.args = args
         self.logger = logger
         self.batch_size = self.args.batch_size_run
-
+        # self.open = self.args.__getattribute__('open_train_or_eval') == True
+        self.open = args.open
         # Make subprocesses for the envs
         self.parent_conns, self.worker_conns = zip(
             *[Pipe() for _ in range(self.batch_size)]
@@ -103,20 +105,32 @@ class ParallelRunner:
             parent_conn.send(("close", None))
 
     def reset(self):
-        self.logger.console_logger.info("Resetting")
+        # self.logger.console_logger.info("Resetting")
         self.batch = self.new_batch()
+
+        if self.open:
+            self.trained_agent_idxs = self.mac.sample_agent_team()
+            # compute and store trainable agents mask
+            trainable_mask = self.compute_open_agent_mask(self.batch, self.trained_agent_idxs)
+            self.batch.update({"trainable_agents": trainable_mask})
 
         # Reset the envs
         for parent_conn in self.parent_conns:
             parent_conn.send(("reset", None))
 
-        pre_transition_data = {"state": [], "avail_actions": [], "obs": []}
+        actor_hidden_states = self.mac.init_hidden(batch_size=self.batch_size)
+        pre_transition_data = {"state": [], 
+                               "avail_actions": [], 
+                               "obs": [], 
+                               'actor_hidden_states': actor_hidden_states}
+
         # Get the obs, state and avail_actions back
         for parent_conn in self.parent_conns:
             data = parent_conn.recv()
             pre_transition_data["state"].append(data["state"])
             pre_transition_data["avail_actions"].append(data["avail_actions"])
             pre_transition_data["obs"].append(data["obs"])
+
 
         self.batch.update(pre_transition_data, ts=0)
 
@@ -144,7 +158,7 @@ class ParallelRunner:
         while True:
             # Pass the entire batch of experiences up till now to the agents
             # Receive the actions for each agent at this timestep in a batch for each un-terminated env
-            actions = self.mac.select_actions(
+            actions, actor_hidden_states = self.mac.select_actions(
                 self.batch,
                 t_ep=self.t,
                 t_env=self.t_env,
@@ -178,6 +192,12 @@ class ParallelRunner:
             all_terminated = all(terminated)
             if all_terminated:
                 break
+            
+             # Remove rnn states for term envs
+            if len(envs_not_terminated) != actor_hidden_states.shape[0]: 
+                local_nonterm_idx_list = [idx for idx in range(actor_hidden_states.shape[0]) if idx not in local_term_idx_list]
+                actor_hidden_states = actor_hidden_states[local_nonterm_idx_list]
+                local_term_idx_list = [] # reset!
 
             # Post step data we will insert for the current timestep
             post_transition_data = {"reward": [], "terminated": []}
@@ -221,6 +241,9 @@ class ParallelRunner:
 
             # Move onto the next timestep
             self.t += 1
+
+            # Add the pre-transition data
+            pre_transition_data["actor_hidden_states"] = actor_hidden_states
 
             # Add the pre-transition data
             self.batch.update(
@@ -270,6 +293,13 @@ class ParallelRunner:
             self.log_train_stats_t = self.t_env
 
         return self.batch
+    
+    def compute_open_agent_mask(self, batch, agent_idx_list):
+        '''compute mask corresponding to trained agents only'''
+        agent_mask = th.zeros((batch.batch_size, batch.max_seq_length, self.args.n_agents))
+        # set entries of agent_mask coresponding to trained agents to 1
+        agent_mask[:, :, agent_idx_list] = 1.0
+        return agent_mask
 
     def _log(self, returns, stats, prefix):
         print("Logging stat:", returns, stats, prefix)
@@ -289,6 +319,7 @@ class ParallelRunner:
                     self.t_env,
                 )
                 self.logger.log_stat(
+                    
             prefix + "best_mean_reward",  float(np.quantile(returns, q=[0.95])), self.t_env
                     )       
             total_returns = np.array(returns).sum(axis=-1)
@@ -325,6 +356,8 @@ def env_worker(remote, env_fn):
         if cmd == "step":
             actions = data
             # Take a step in the environment
+            # shape must be list or an array of scalars of size (1, n_agents)
+            actions = actions.squeeze().flatten()
             _, reward, terminated, truncated, env_info = env.step(actions)
             terminated = terminated[0] or truncated[0]
             # Return the observations, avail_actions and state to make the next action

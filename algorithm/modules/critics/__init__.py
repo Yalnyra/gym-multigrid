@@ -6,8 +6,11 @@ from .maddpg import MADDPGCritic
 from .maddpg_ns import MADDPGCriticNS
 from .ac import ACCritic
 from .ac_ns import ACCriticNS
-
-
+from .pac_ac_ns import PACCriticNS
+from .pac_dcg_ns import DCGCriticNS
+# from .ippo import IPPOCritic
+# from .ippo_ns import IPPOCriticNS
+from .poam import POAMCritic
 REGISTRY = {}
 
 REGISTRY["coma_critic"] = COMACritic
@@ -16,15 +19,13 @@ REGISTRY["coma_critic_ns"] = COMACriticNS
 REGISTRY["cv_critic_ns"] = CentralVCriticNS
 REGISTRY["maddpg_critic"] = MADDPGCritic
 REGISTRY["maddpg_critic_ns"] = MADDPGCriticNS
-REGISTRY["ac_critic"] = ACCritic
-REGISTRY["ac_critic_ns"] = ACCriticNS
+# REGISTRY["ac_critic"] = ACCritic
+# REGISTRY["ac_critic_ns"] = ACCriticNS
+REGISTRY["pac_critic_ns"] = PACCriticNS
+REGISTRY["pac_dcg_critic_ns"] = DCGCriticNS
+# REGISTRY["ippo_critic"] = IPPOCritic
+# REGISTRY["ippo_critic_ns"] = IPPOCriticNS
+REGISTRY["poam_critic"] = POAMCritic
 
 
-def register_pac_critics():
-    from .pac_ac import PACCritic
-    from .pac_ac_ns import PACCriticNS
-    from .pac_dcg_ns import DCGCriticNS
 
-    REGISTRY["pac_critic"] = PACCritic
-    REGISTRY["pac_critic_ns"] = PACCriticNS
-    REGISTRY["pac_dcg_critic_ns"] = DCGCriticNS

@@ -7,7 +7,7 @@ from torch.optim import Adam
 from algorithm.components.episode_buffer import EpisodeBatch
 from algorithm.components.standarize_stream import RunningMeanStd
 from algorithm.modules.critics import REGISTRY as critic_resigtry
-from algorithm.modules.critics import register_pac_critics
+# from algorithm.modules.critics import register_pac_critics
 
 
 class PACActorCriticLearner:
@@ -21,7 +21,7 @@ class PACActorCriticLearner:
         self.agent_params = list(mac.parameters())
         self.agent_optimiser = Adam(params=self.agent_params, lr=args.lr)
 
-        register_pac_critics()
+        # register_pac_critics()
         self.critic = critic_resigtry[args.critic_type](scheme, args)
         self.target_critic = copy.deepcopy(self.critic)
         self.state_value = critic_resigtry[args.state_value_type](scheme, args)

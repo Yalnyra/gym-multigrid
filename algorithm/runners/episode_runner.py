@@ -112,7 +112,7 @@ class EpisodeRunner:
 
             # Pass the entire batch of experiences up till now to the agents
             # Receive the actions for each agent at this timestep in a batch of size 1
-            actions = self.mac.select_actions(
+            actions, actor_hidden_states = self.mac.select_actions(
                 self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode
             )
             _, reward, terminated, truncated, env_info = self.env.step(actions.squeeze().cpu().numpy())
@@ -144,6 +144,7 @@ class EpisodeRunner:
                 "state": th.tensor(s_np).flatten().unsqueeze(0),
                 "avail_actions": th.tensor(self.env.get_avail_actions()),
                 "obs": th.tensor(o_np).flatten().unsqueeze(0),
+                "actor_hidden_states": actor_hidden_states
             }
         if test_mode and self.args.render:
             print(f"Episode reward: {episode_return}")
@@ -151,7 +152,7 @@ class EpisodeRunner:
         self.batch.update(last_data, ts=self.t)
 
         # Select actions in the last stored state
-        actions = self.mac.select_actions(
+        actions, actor_hidden_states = self.mac.select_actions(
             self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode
         )
         self.batch.update({"actions": actions.unsqueeze(0)}, ts=self.t)

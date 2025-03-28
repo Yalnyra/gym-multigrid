@@ -13,7 +13,6 @@ class RNNAgent(nn.Module):
         self.args = args
         self.input_shape = input_shape
         self.n_agents = args.n_agents
-        print("first layer shape:", input_shape)
         self.fc1 = nn.Linear(input_shape, args.hidden_dim)
         if self.args.use_rnn:
             self.rnn = nn.GRUCell(args.hidden_dim, args.hidden_dim)

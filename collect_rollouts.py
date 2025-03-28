@@ -187,8 +187,8 @@ def _load_data_from_wandb(ids=None, metric=None, date_after="2025-02-28##"):
         data
     )
 
-    print(runs_df.shape)
-    print(runs_df)
+    # print(runs_df.shape)
+    # print(runs_df)
     # runs_df = runs_df.set_index(keys=['id'])
 
     
@@ -311,7 +311,7 @@ def load_marl_eval_history_data(equal_steps=None, output_filename='marl_eval_raw
             print("Extracted: ", row_items.values())
             for k, v in row_items.items():
             # Nest a scalar key into a list
-                print(type(v))
+                # print(type(v))
                 if pd.notna(v):
                     if k in ['eval/mean_reward','train/mean_reward']:
                         k = 'mean_norm_return'
