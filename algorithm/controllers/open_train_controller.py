@@ -12,6 +12,8 @@ class OpenTrainMAC:
         self.args = args
         self.n_uncontrolled = args.n_uncontrolled
         self._build_agent_pool(scheme)
+        self.seed = args.seed
+        self.np_random = np.random.default_rng(seed=args.seed)
         self.sample_agent_team()
 
         # hacky way to provide compatibility with learners
@@ -100,10 +102,10 @@ class OpenTrainMAC:
         # sample uncontrolled agent team
         active_uncontrolled_team = np.random.choice(list(self.uncontrolled_agent_teams.keys()))            
         self.uncontrolled_agent_pool = self.uncontrolled_agent_teams[active_uncontrolled_team]
-        uncontrolled_agent_idxs = list(np.random.choice(len(self.uncontrolled_agent_pool), 
+        uncontrolled_agent_idxs = list(self.np_random.choice(len(self.uncontrolled_agent_pool), 
                                                      n_uncontrolled, 
                                                      replace=False))
-        trained_agent_idxs = list(np.random.choice(range(self.n_agents), 
+        trained_agent_idxs = list(self.np_random.choice(range(self.n_agents), 
                                                    self.n_agents - n_uncontrolled, 
                                                    replace=False))
         # order agents from uncontrolled and trained teams randomly

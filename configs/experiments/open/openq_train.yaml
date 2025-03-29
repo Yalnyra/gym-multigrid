@@ -1,0 +1,48 @@
+# @package _global_
+runner: 'parallel'
+mac: open_train_mac
+eval_mode: open # Evaluate model for test_nepisode episodes and quit (no training)
+evaluate: True
+local_results_path: ${model_save_path}/open_eval # Relative path to save local results
+
+open: True 
+n_uncontrolled: 4 # number of uncontrolled agents to sample and add to trained agent team
+
+# --- agents to load ---
+# define teams
+uncntrl_agents: 
+  iql: 
+    agent_loader: rnn_eval_agent_loader
+    # agent_path: iql_ns_10_13_fire_adjacent_obs_10
+    agent_path: ''
+    load_step: last # Load model trained on this many timesteps (0 if choose max possible)
+    n_agents_to_populate: 10 # must be less than n_agents
+    test_mode: False
+  qmix:
+    agent_loader: rnn_eval_agent_loader
+    # agent_path: qmix_ns_10_13_fire_adjacent_obs_10
+    agent_path: ''
+    load_step: last
+    n_agents_to_populate: 10 # must be less than n_agents
+    test_mode: False
+trainable_agents_mask_actor: True # applies to open train only
+trainable_agents_mask_critic: False # applies to open train only
+
+mask_type: "agent" # choices: [team, agent] 
+# team: multiply default terminated and filled masks
+# ind: compute individual mask from available actions
+
+# --- Open train Parameters ---
+trained_agents:
+  agent_0:
+    # agent_loader: poam_train_agent_loader
+    agent_loader: rnn_eval_agent_loader
+    n_agents_to_populate: 10
+    load_step: last
+    agent_path: ${checkpoint}
+# trained_agents.agent_0.agent_path: 
+
+
+# Fill it out with your base run path
+base_uncntrl_path: D:/python_course/gym-multigrid/${model_save_path}
+

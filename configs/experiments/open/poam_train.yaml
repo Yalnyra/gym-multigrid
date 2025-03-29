@@ -1,6 +1,4 @@
 # @package _global_
-defaults:
-  - pymarl
 
 name: "poam"
 on_policy: True
@@ -23,7 +21,7 @@ obs_team_composition: False
 
 agent_output_type: "pi_logits"
 learner: "poam_learner"
-mac: "agent_owned_mac"
+mac: "open_train_mac"
 agent: "rnn_poam"
 critic_type: "poam_critic"
 
@@ -71,7 +69,34 @@ mask_type: "team" # choices: [team, agent]
 # ind: compute individual mask from available actions
 
 # --- Open train Parameters ---
+open: True 
+n_uncontrolled: 4 # number of uncontrolled agents to sample and add to trained agent team
+
+# --- agents to load ---
+# define teams
+uncntrl_agents: 
+  iql: 
+    agent_loader: rnn_eval_agent_loader
+    # agent_path: iql_ns_10_13_fire_adjacent_obs_10
+    agent_path: ""
+    load_step: last # Load model trained on this many timesteps (0 if choose max possible)
+    n_agents_to_populate: 10 # must be less than n_agents
+    test_mode: True
+  qmix:
+    agent_loader: rnn_eval_agent_loader
+    # agent_path: qmix_ns_10_13_fire_adjacent_obs_10
+    agent_path: ""
+    load_step: last
+    n_agents_to_populate: 10 # must be less than n_agents
+    test_mode: True
+
 trained_agents:
   agent_0:
     agent_loader: poam_train_agent_loader
-    agent_path: ""
+    n_agents_to_populate: 2 # must be less than n_agent
+    load_step: last
+    agent_path: ${checkpoint}
+    test_mode: True
+
+# Fill it out with your base run path
+base_uncntrl_path: D:/python_course/gym-multigrid/${model_save_path}

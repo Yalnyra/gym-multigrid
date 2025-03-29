@@ -39,7 +39,7 @@ class ParallelRunner:
         self.ps = [
             Process(
                 target=env_worker,
-                args=(worker_conn, CloudpickleWrapper(partial(env_fn, DictConfig(env_arg)))),
+                args=(worker_conn, CloudpickleWrapper(partial(env_fn, DictConfig(env_arg), None, args.evaluate))),
             )
             for env_arg, worker_conn in zip(env_args, self.worker_conns)
         ]
@@ -83,17 +83,17 @@ class ParallelRunner:
         return self.env_info
     
     def start_rec(self):
-        self.parent_conns[0].send("start_rec")
+        self.parent_conns[0].send(("start_rec", None))
 
     def stop_rec(self):
-        self.parent_conns[0].send("stop_rec")
+        self.parent_conns[0].send(("stop_rec", None))
 
     # def save_replay(self):
     #     self.parent_conns[0].send(("save_replay", None))
 
     def save_replay(self):
         path = os.path.join(self.args.log,self.args.run_id+'-'+str(self.t)+".gif")
-        self.parent_conns[0].send(("save_replay", self.args.log, self.args.run_id, self.t_env))
+        self.parent_conns[0].send(("save_replay", (self.args.log, self.args.run_id, self.t_env)))
         if self.args.wandb['enabled']:
             try:
                 self.logger.wandb.log({"video": Video(path, format="gif")})

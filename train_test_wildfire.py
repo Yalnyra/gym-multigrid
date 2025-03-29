@@ -35,10 +35,11 @@ from supersuit import pettingzoo_env_to_vec_env_v1, concat_vec_envs_v1
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
-def create_env(config:DictConfig, render_mode=None, inference=False):
+def create_env(config:DictConfig, render_mode="rgb_array", inference=False):
     # Resize team size based on if run in inference or test
     print("creatin ginfo")
     num_agents = config.agents if not inference else config.agents_inference
+    render_mode = None if not config.save_replay else "rbg_array"
     seed = config.seed if not inference else config.eval_seed
     print("creatin ginfo")
     env = WildfireEnv(
@@ -298,13 +299,15 @@ def test(config:DictConfig):
 
 
 def evaluate_sequential(args, runner):
-    # runner.start_rec()
-    for _ in range(args.episodes):
+    runner.start_rec()
+    for i in range(args.episodes):
         runner.run(test_mode=True)
+        print("run no", i)
+        print(runner.t)
 
-    # if args.save_replay:
-    #     runner.save_replay()
-    # runner.stop_rec()
+    if args.save_replay:
+        runner.save_replay()
+    runner.stop_rec()
     runner.close_env()
 
 
@@ -380,53 +383,58 @@ def run_sequential(config: dict, logger):
     runner.setup(scheme=scheme, groups=groups, preprocess=preprocess, mac=mac)
     logger.console_logger.info("learner")
     # Learner
-    learner = le_REGISTRY[args.learner](mac, buffer.scheme, logger, args)
 
-    if args.use_cuda:
-        learner.cuda()
+    # let OpenMAC take care of loading agents
+    if args.eval_mode != 'open':
+        learner = le_REGISTRY[args.learner](mac, buffer.scheme, logger, args)
 
-    if args.checkpoint != "":
-        timesteps = []
-        timestep_to_load = 0
+        if args.use_cuda:
+            learner.cuda()
 
-        if not os.path.isdir(args.model_save_path):
-            logger.console_logger.info(
-                "Checkpoint directiory {} doesn't exist".format(args.model_save_path)
-            )
-            return
+        if args.checkpoint != "":
+            timesteps = []
+            timestep_to_load = 0
 
-        # # Go through all files in args.checkpoint_path
-        for file in os.listdir(args.model_save_path):
-            epochs = str.split(file, sep='_')[-1]
-            full_name = os.path.join(args.model_save_path,args.checkpoint+"_0_"+epochs)
-            # Check if they are dirs the names of which are numbers
-            # print(epochs)
-            if os.path.isdir(full_name) and epochs.isdigit():
-                timesteps.append(int(epochs))
-        # print(timesteps)
-        if args.train_epochs == 0:
-            # choose the max timestep
-            timestep_to_load = max(timesteps)
-        else:
-            # choose the timestep closest to load_step
-            timestep_to_load = min(timesteps, key=lambda x: abs(x - int(args.train_epochs)))
+            if not os.path.isdir(args.model_save_path):
+                logger.console_logger.info(
+                    "Checkpoint directiory {} doesn't exist".format(args.model_save_path)
+                )
+                return
 
-        model_path = os.path.join(args.model_save_path,args.checkpoint+"_0_"+str(timestep_to_load))
+            # # Go through all files in args.checkpoint_path
+            for file in os.listdir(args.model_save_path):
+                epochs = str.split(file, sep='_')[-1]
+                full_name = os.path.join(args.model_save_path,args.checkpoint+"_0_"+epochs)
+                # Check if they are dirs the names of which are numbers
+                # print(epochs)
+                if os.path.isdir(full_name) and epochs.isdigit():
+                    timesteps.append(int(epochs))
+            # print(timesteps)
+            if args.train_epochs == 0:
+                # choose the max timestep
+                timestep_to_load = max(timesteps)
+            else:
+                # choose the timestep closest to load_step
+                timestep_to_load = min(timesteps, key=lambda x: abs(x - int(args.train_epochs)))
+
+            model_path = os.path.join(args.model_save_path,args.checkpoint+"_0_"+str(timestep_to_load))
 
 
-        logger.console_logger.info("Loading model from {}".format(model_path))
-        learner.load_models(model_path)
+            logger.console_logger.info("Loading model from {}".format(model_path))
+            learner.load_models(model_path)
+            runner.t_env = args.train_epochs
+
+
+    if args.evaluate or args.save_replay:
+        print("start eval")
         runner.t_env = args.train_epochs
+        runner.log_train_stats_t = runner.t_env
+        evaluate_sequential(args, runner)
 
-        if args.evaluate or args.save_replay:
-            print("start eval")
-            runner.log_train_stats_t = runner.t_env
-            
-            evaluate_sequential(args, runner)
-            logger.log_stat("episode", runner.t_env, runner.t_env)
-            logger.print_recent_stats()
-            logger.console_logger.info("Finished Evaluation")
-            return
+        logger.log_stat("episode", runner.t_env, runner.t_env)
+        logger.print_recent_stats()
+        logger.console_logger.info("Finished Evaluation")
+        return
     print("skip eval")
     # start training
     episode = 0
@@ -469,12 +477,12 @@ def run_sequential(config: dict, logger):
             last_time = time.time()
 
             last_test_T = runner.t_env
-            # runner.start_rec()
+            runner.start_rec()
             for _ in range(n_test_runs):
                 runner.run(test_mode=True)
-            # if args.save_replay:
-            #     runner.save_replay()
-            # runner.stop_rec()
+            if args.save_replay:
+                runner.save_replay()
+            runner.stop_rec()
         if args.save_model and (
             runner.t_env - model_save_time >= args.save_model_interval
             or model_save_time == 0
@@ -608,15 +616,16 @@ def main(cfg: DictConfig):
         run_sequential(args, logger)
         logger.save(model_path)
         # wandb.finish(0)   
-        optim_result = np.median(logger.stats['burnt trees'])
+        # optim_result = np.median(logger.stats['burnt trees'])
         logger.finish()
-        return optim_result
+        # return optim_result
+        return 
     if not cfg['evaluate']:
         train(cfg, logger)
     test(cfg)
-    optim_result = np.median(logger.stats['burnt trees'])
+    # optim_result = np.median(logger.stats['burnt trees'])
     logger.finish()
-    return optim_result
+    # return optim_result
 
 
 

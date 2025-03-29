@@ -11,6 +11,8 @@ class OpenEvalMAC:
         self.args = args
         self.n_uncontrolled = args.n_uncontrolled
         self._build_agent_pool(scheme)
+        self.seed = args.eval_seed
+        self.np_random = np.random.default_rng(seed=args.eval_seed)
         self.sample_agent_team()
 
     def select_actions(self, ep_batch, 
@@ -53,10 +55,10 @@ class OpenEvalMAC:
         This function controls the openness of the evaluation.
         Randomly samples n_uncontrolled agents from the uncontrolled agent team.
         ''' 
-        uncontrolled_agent_idxs = list(np.random.choice(len(self.uncontrolled_agent_pool), 
+        uncontrolled_agent_idxs = list(self.np_random.choice(len(self.uncontrolled_agent_pool), 
                                                      self.n_uncontrolled, 
                                                      replace=False))
-        trained_agent_idxs = list(np.random.choice(len(self.trained_agent_pool), 
+        trained_agent_idxs = list(self.np_random.choice(len(self.trained_agent_pool), 
                                                       self.n_agents - self.n_uncontrolled, 
                                                       replace=False))
         # order agents from uncontrolled and trained teams randomly
@@ -73,6 +75,8 @@ class OpenEvalMAC:
         self._active_team = sorted(self._active_team, key=lambda x: x[0])
         # indices of the trained agents
         trained_agent_idxs = [agent_idx for agent_idx, _, team_name in self._active_team if team_name == "trained_agent_subteam"]
+        print(uncontrolled_agent_idxs)
+        print(trained_agent_idxs)
         return trained_agent_idxs
 
     def _build_agent_pool(self, scheme):

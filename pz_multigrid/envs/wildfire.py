@@ -337,6 +337,8 @@ class WildfireEnv(MultiGridEnv):
         return env_info
 
     def save_replay(self, path, f, ep):
+        
+        print("Recorded frames: ",len(self.frames))
         save_frames_as_gif(frames=self.frames, path=path, filename=f, ep=ep, fps=5)
 
 
@@ -1317,6 +1319,8 @@ class WildfireEnv(MultiGridEnv):
 
         # get agent observations after the environment step
         self.obs = self._get_obs()
+        if self.render_mode is not None:
+            self.render()
         # print("Is done: ",self.step_count, terminated[0])
         # info dictionary
         burnt_frac = self.burnt_trees / (self.grid_size_without_walls ** 2)
@@ -1437,5 +1441,4 @@ class WildfireEnv(MultiGridEnv):
         
         if self.recording:
             self.frames.append(img)
-
         return img

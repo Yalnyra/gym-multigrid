@@ -1,4 +1,4 @@
-import json
+import yaml
 from types import SimpleNamespace as SN
 import torch as th
 import torch.nn.functional as F
@@ -23,8 +23,8 @@ class POAMEvalAgentLoader(BaseAgentLoader):
                  test_mode=True
                 ):
         # load args from saved     
-        config_path = f"{model_path.replace('models', 'sacred')}/1/config.json"
-        self.saved_args = SN(**json.load(open(config_path, "r")))
+        config_path = f"{model_path}/config.yaml"
+        self.saved_args = SN(**yaml.load(open(config_path, "r"), yaml.SafeLoader))
         super().__init__(args, scheme, 
                          n_agents=args.n_agents,
                          obs_last_action=self.saved_args.obs_last_action, 
@@ -42,7 +42,7 @@ class POAMEvalAgentLoader(BaseAgentLoader):
         # agents won't be able to run anyways
         input_shape = self._get_input_shape(scheme, self.saved_args)
         assert load_step in ['best', 'last'] or load_step.isdigit(), "load_step must be 'best', 'last', or a digit"
-        self.load(input_shape, model_path, 
+        self.load(input_shape, args.model_save_path, model_path, 
                   load_step=load_step, load_agent_idx=load_agent_idx)
 
         self.batch_size_run = self.args.batch_size_run
@@ -97,14 +97,14 @@ class POAMEvalAgentLoader(BaseAgentLoader):
         hidden_state = hidden_state.reshape(*ret_shape)
         return agent_outs, chosen_actions, hidden_state
 
-    def load(self, input_shape, path, load_step, load_agent_idx):
+    def load(self, input_shape, root, path, load_step, load_agent_idx):
         # if load_step is 0, load max possible
         # if load_step is best, load best chkpt
-        model_path, _ = find_model_path(path, load_step=load_step, logger=None)
+        model_path, _ = find_model_path(root, path, load_step=load_step, logger=None)
         
         assert self.saved_args.agent == "rnn_poam"
         self.use_param_sharing = False
-        from utils.encoder_decoder import Encoder, get_encoder_input_shape
+        from algorithm.utils.encoder_decoder import Encoder, get_encoder_input_shape
         self.policy = RNNPOAMAgent(input_shape, self.saved_args)
         encoder_input_shape = get_encoder_input_shape(self.scheme)
 

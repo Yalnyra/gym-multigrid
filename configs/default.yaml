@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - algorithm: poam
+  - algorithm: vdn
   - reward: fire_adjacent
   # - sweeper: wandb
   #   optional: True
-  - experiments/open: 
+  # - experiments/open: openq
   - experiments/env_size: default
   - experiments/obs: range_six
   - experiments/team_size: ten
@@ -59,7 +59,7 @@ reward_scalarisation: "sum"  # How to aggregate rewards to single common reward 
 seed: 8001
 eval_seed: 3456
 env: wildfire
-agents: 3
+agents: 10
 agents_inference: 10
 flashpoints: 3
 world_size: 13
@@ -87,43 +87,14 @@ from_scratch: True
 evaluate: True
 batch_size: 1 # Number of episodes to train on
 batch_size_run: 1 # Number of episodes to train on
-eval_mode: open # Evaluate model for test_nepisode episodes and quit (no training)
-local_results_path: stag-hunt-8p8s8h/open_eval # Relative path to save local results
-
-open: True 
-n_uncontrolled: 2 # number of uncontrolled agents to sample and add to trained agent team
-
-# --- agents to load ---
-# define teams
-uncntrl_agents: 
-  iql: 
-    agent_loader: rnn_eval_agent_loader
-    agent_path: iql_ns_10_13_fire_adjacent_obs_10
-    load_step: last # Load model trained on this many timesteps (0 if choose max possible)
-    n_agents_to_populate: 10 # must be less than n_agents
-    test_mode: True
-  qmix:
-    agent_loader: rnn_eval_agent_loader
-    agent_path: qmix_ns_10_13_fire_adjacent_obs_10
-    load_step: last
-    n_agents_to_populate: 10 # must be less than n_agents
-    test_mode: True
-trainable_agents_mask_actor: True # applies to open train only
-trainable_agents_mask_critic: False # applies to open train only
-mac: open_eval_mac
-
-trained_agents.agent_0.agent_path: ${checkpoint}
+eval_mode: null
+open: False
+use_rnn: True
 
 model_save_path: out/models/
 
-# Fill it out with your base run path
-base_uncntrl_path: foo/${model_save_path}
-
-
 # checkpoint: 'pac_sarsa_dcg_ns_10_13_fire_adjacent_obs_10'
 checkpoint: vdn_10_13_fire_adjacent_obs_10
-use_rnn: True
-
 log: out/logs/
 train_epochs: 100_000
 memory_size: 10_000  # Max memory buffer size

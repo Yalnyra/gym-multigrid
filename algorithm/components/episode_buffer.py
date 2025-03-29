@@ -117,7 +117,7 @@ class EpisodeBatch:
                 for transform in self.preprocess[k][1]:
                     v = transform.transform(v)
                 target[new_k][_slices] = v.view_as(target[new_k][_slices])
-                print("One hot", target[new_k][_slices].shape)
+                # print("One hot", target[new_k][_slices].shape)
 
     def _check_safe_view(self, v, dest):
         if len(v.shape) == 0:

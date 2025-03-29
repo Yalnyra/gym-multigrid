@@ -19,10 +19,9 @@ class BasicMAC:
     def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False):
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
-        agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode)
-        agent_outputs.shape
+        agent_outputs, hidden = self.forward(ep_batch, t_ep, test_mode=test_mode)
         chosen_actions: th.Tensor = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
-        return chosen_actions, None
+        return chosen_actions, hidden
 
     def forward(self, ep_batch, t, test_mode=False):
         agent_inputs = self._build_inputs(ep_batch, t)
@@ -38,7 +37,7 @@ class BasicMAC:
                 agent_outs[reshaped_avail_actions == 0] = -1e10
             agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
 
-        return agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
+        return agent_outs.view(ep_batch.batch_size, self.n_agents, -1), self.hidden_states.view(ep_batch.batch_size, self.n_agents, -1)
 
     def init_hidden(self, batch_size):
         self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n_agents, -1)  # bav
@@ -80,7 +79,8 @@ class BasicMAC:
 
     def _get_input_shape(self, scheme):
         # Divide by number of agents
-        input_shape = scheme["obs"]["vshape"] // self.n_agents
+        input_shape = scheme["obs"]["vshape"] 
+        # // self.n_agents
         if self.args.obs_last_action:
             input_shape += scheme["actions_onehot"]["vshape"][0]
         if self.args.obs_agent_id:
