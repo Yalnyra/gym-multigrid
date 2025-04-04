@@ -4,6 +4,7 @@ import json
 import logging
 import io
 import os
+import time
 
 import numpy as np
 
@@ -101,10 +102,11 @@ class Logger:
             group=group_name,
             mode=mode,
             name=config["run_id"],
-            sync_tensorboard=True,
+            # sync_tensorboard=True,
             job_type="test" if config['evaluate'] else "train",
-            resume="allow",
-            reinit=True,
+            # resume="must",
+            # reinit=True,
+            id=f"{config['run_id']}-{time.strftime('%m-%d-%H-%M', time.gmtime())}",
             monitor_gym=True,
         )
 

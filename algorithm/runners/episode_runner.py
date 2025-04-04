@@ -18,6 +18,7 @@ class EpisodeRunner:
         self.logger = logger
         self.batch_size = self.args.batch_size_run
         assert self.batch_size == 1
+        self.open = args.open
 
         self.env = create_env(
             args,
@@ -76,6 +77,8 @@ class EpisodeRunner:
         self.env.close()
 
     def reset(self, test_mode=False):
+        if self.open:
+            self.trained_agent_idxs = self.mac.sample_agent_team()
         self.batch = self.new_batch()
         # self.frames = []
         seed = self.args.eval_seed if test_mode else self.args.seed
@@ -91,7 +94,7 @@ class EpisodeRunner:
             episode_return = 0
         else:
             episode_return = np.zeros(self.env.num_agents)
-        self.mac.init_hidden(batch_size=self.batch_size)
+        actor_hidden_states = self.mac.init_hidden(batch_size=self.batch_size)
         log_prefix = "eval/" if test_mode else "train/"
         last_burnt = 0.
         last_unburnt = 1.
@@ -105,6 +108,10 @@ class EpisodeRunner:
                 "avail_actions": th.tensor(self.env.get_avail_actions()),
                 "obs": th.tensor(o_np).flatten().unsqueeze(0),
             }
+
+            if actor_hidden_states is not None:
+                pre_transition_data['actor_hidden_states']= actor_hidden_states
+
             # for k, v in pre_transition_data.items():
             #     print(f"{k} shape: ", v.shape)
             self.batch.max_seq_length
@@ -144,8 +151,12 @@ class EpisodeRunner:
                 "state": th.tensor(s_np).flatten().unsqueeze(0),
                 "avail_actions": th.tensor(self.env.get_avail_actions()),
                 "obs": th.tensor(o_np).flatten().unsqueeze(0),
-                "actor_hidden_states": actor_hidden_states
+                # "actor_hidden_states": actor_hidden_states
             }
+        
+        if actor_hidden_states is not None:
+            last_data['actor_hidden_states']= actor_hidden_states
+
         if test_mode and self.args.render:
             print(f"Episode reward: {episode_return}")
 
@@ -173,9 +184,13 @@ class EpisodeRunner:
         # cur_stats["win_rate"] = np.mean(cur_stats['win']) if 'win' in cur_stats.keys() else 0
         cur_stats["ep_length"] = self.t + cur_stats.get("ep_length", 0)
 
+        if self.open:
+            # compute and store trainable agents mask
+            trainable_mask = self.compute_open_agent_mask(self.batch, self.trained_agent_idxs)
+            self.batch.update({"trainable_agents": trainable_mask})
 
-        if not test_mode:
-            self.t_env += self.t
+        # if not test_mode:
+        self.t_env += self.t
 
         cur_returns.append(episode_return)
         # print(self.test_returns)
@@ -215,6 +230,13 @@ class EpisodeRunner:
             self.log_train_stats_t = self.t_env
 
         return self.batch
+    
+    def compute_open_agent_mask(self, batch, agent_idx_list):
+        '''compute mask corresponding to trained agents only'''
+        agent_mask = th.zeros((batch.batch_size, batch.max_seq_length, self.args.n_agents))
+        # set entries of agent_mask coresponding to trained agents to 1
+        agent_mask[:, :, agent_idx_list] = 1.0
+        return agent_mask
 
     def _log(self, returns, stats, prefix):
         print("Logging stat:", returns, stats, prefix)

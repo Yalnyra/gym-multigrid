@@ -19,6 +19,7 @@ obs_state: False # required for mappo critic
 obs_individual_obs: False # used for cv_critic only
 obs_team_composition: False 
 
+eval_mode: open
 agent_output_type: "pi_logits"
 learner: "poam_learner"
 mac: "open_eval_mac"
@@ -35,7 +36,7 @@ ed_model_uncontrolled_only: False # if True, model both controlled and uncontrol
 ed_epochs: 1
 n_ed_minibatch: 1 # 2
 n_ed_hidden_layers: 1
-ed_hidden_dim: 64
+ed_hidden_dim: 128
 embed_dim: 64
 ed_lr: 0.0005
 ed_bce_loss: False
@@ -72,6 +73,8 @@ mask_type: "team" # choices: [team, agent]
 open: True 
 n_uncontrolled: 4 # number of uncontrolled agents to sample and add to trained agent team
 
+run_id: poam_${agents}_${n_uncontrolled}_obs_${agent_view_size}${fire_spread}
+
 # --- agents to load ---
 # define teams
 uncntrl_agents: 
@@ -91,7 +94,7 @@ uncntrl_agents:
 trained_agents:
   agent_0:
     agent_loader: poam_eval_agent_loader
-    n_agents_to_populate: 2 # must be less than n_agent
+    n_agents_to_populate: 10 # must be less than n_agent
     load_step: last
     agent_path: ${checkpoint}
     test_mode: True

@@ -8,6 +8,7 @@ from gym_multigrid.utils.misc import save_frames_as_gif
 from omegaconf import OmegaConf, DictConfig
 from omegaconf.errors import ConfigKeyError
 import wandb
+from algorithm.sb3 import model_PPO
 
 # PyMARL algorithms
 # SEE LICENSE & NOTICE
@@ -81,7 +82,7 @@ def wrap_env(env, config:DictConfig):
     return env
 
 
-def load_model(model_path: str, name:str, env=None):
+def load_model(model_path: str, name:str, config, env=None):
     print(f"Attempting to load {name} from path: {model_path}")
     # does it need env?
     # model_path = os.path.abspath(model_path)
@@ -90,6 +91,7 @@ def load_model(model_path: str, name:str, env=None):
     match name:
         case 'ppo':
             define = hydra.utils.get_class('sbx.PPO')
+            # define = model_PPO(env, config)
         case 'matd3':
             define = hydra.utils.get_class('agilerl.algorithms.matd3.MATD3')
             model_path += '.pt'
@@ -147,31 +149,32 @@ def test_model(env, config:DictConfig, model=None):
             
             
             steps += 1
-            if config['wandb']['enabled']:
+            # if config['wandb']['enabled']:
             # Log reward at each step to wandb
-                wandb.log(
-                    {
-                        # "eval/mean_reward": mean_reward_per_agent,
+                # wandb.log(
+                #     {
+                #         # "eval/mean_reward": mean_reward_per_agent,
                         
-                    }
-                )
+                #     }
+                # )
         if config['wandb']['enabled']:
         # Total episode reward
             wandb.log(
                 {
-                    "eval/mean_reward": mean_reward_per_agent / ep,
+                    "eval/mean_reward": mean_reward_per_agent / steps,
                     "eval/burnt trees": np.mean(frac_burned),
                     "eval/unburnt trees": np.mean(frac_unburned),
+                    "eval/mean_ep_length": steps,
                 },
                 ep
         )
         ep_reward = 0
         frac_burned = []
         frac_unburned = []
-    env.save_replay()
-    # save_frames_as_gif(frames=frames, path=config['log'], filename=f"{config['run_id']}", ep=config['train_epochs'], fps=5)
+    # env.save_replay(config['log'], config['run_id'], config['train_epochs'])
+    save_frames_as_gif(frames=frames, path=config['log'], filename=f"{config['run_id']}", ep=config['train_epochs'], fps=5)
     if config['wandb']['enabled']:
-        wandb.log({"video": wandb.Video(f"{config['log']}/{config['run_id']}-{config['train_epochs']}.gif", format="gif")})
+        wandb.log({"video": wandb.Video(np.array(frames), format="gif")})
         
 
 
@@ -197,7 +200,7 @@ def train(config: DictConfig, logger: Logger):
         timestep_to_load = 0
 
         if not os.path.isdir(config.model_save_path):
-            logger.console_logger.info(
+            print(
                 "Checkpoint directiory {} doesn't exist".format(config.model_save_path)
             )
             return
@@ -205,27 +208,25 @@ def train(config: DictConfig, logger: Logger):
         # # Go through all files in args.checkpoint_path
         for file in os.listdir(config.model_save_path):
             epochs = str.split(file, sep='_')[-1]
-            full_name = os.path.join(config.model_save_path,config .checkpoint+"_0_"+epochs)
-            
+            full_name = os.path.join(os.curdir,config.model_save_path,config .checkpoint+"_0_"+epochs)
             # Check if they are dirs the names of which are numbers
-            # print(epochs)
-            if os.path.isfile(full_name) and epochs.isdigit():
-                timesteps.append(int(epochs))
+            print(full_name)
+            if os.path.isfile(full_name):
+                timesteps.append(epochs)
         # print(timesteps)
-        if config.train_epochs == 0:
+        # if config.train_epochs == 0:
             # choose the max timestep
-            timestep_to_load = max(timesteps)
-        else:
-            # choose the timestep closest to load_step
-            timestep_to_load = min(timesteps, key=lambda x: abs(x - int(config.train_epochs)))
+        timestep_to_load = max(timesteps)
+        # else:
+        #     # choose the timestep closest to load_step
+        #     timestep_to_load = min(timesteps, key=lambda x: abs(x - config.train_epochs))
 
         model_path = os.path.join(config.model_save_path,config.checkpoint+"_0_"+str(timestep_to_load))
 
 
-        logger.console_logger.info("Loading model from {}".format(model_path))
-        model = load_model(model_path, config['name'], train_env)
-        # if config['wandb']['enabled']:
-
+        print("Loading model from {}".format(model_path))
+        model = load_model(model_path, config['name'], config, train_env)
+        
     train_env.reset()
 
     # Train the model
@@ -268,24 +269,24 @@ def test(config:DictConfig):
             # # Go through all files in args.checkpoint_path
             for file in os.listdir(config.model_save_path):
                 epochs = str.split(file, sep='_')[-1]
-                full_name = os.path.join(config.model_save_path,config .checkpoint+"_0_"+epochs)
+                full_name = os.path.join(os.curdir,config.model_save_path,config .checkpoint+"_0_"+epochs)
                 # Check if they are dirs the names of which are numbers
-                # print(epochs)
-                if os.path.isfile(full_name) and epochs.isdigit():
-                    timesteps.append(int(epochs))
+                print(full_name)
+                if os.path.isfile(full_name):
+                    timesteps.append(epochs)
             # print(timesteps)
-            if config.train_epochs == 0:
+            # if config.train_epochs == 0:
                 # choose the max timestep
-                timestep_to_load = max(timesteps)
-            else:
-                # choose the timestep closest to load_step
-                timestep_to_load = min(timesteps, key=lambda x: abs(x - int(config.train_epochs)))
+            timestep_to_load = max(timesteps)
+            # else:
+            #     # choose the timestep closest to load_step
+            #     timestep_to_load = min(timesteps, key=lambda x: abs(x - config.train_epochs))
 
             model_path = os.path.join(config.model_save_path,config.checkpoint+"_0_"+str(timestep_to_load))
 
 
             print("Loading model from {}".format(model_path))
-            model = load_model(model_path, config['name'])
+            model = load_model(model_path, config['name'], config)
         
 
     # Test the trained model
@@ -293,9 +294,9 @@ def test(config:DictConfig):
 
     # Close the environment
     test_env.close()
-    if config['wandb']['enabled']:
-            wandb.log_model(path=f"{config['run_id']}_0_{config['train_epochs']}.{ext}",
-                            name=f"{config['run_id']}_0_{config['train_epochs']}")
+    if config['wandb']['enabled'] and config['checkpoint'] == '':
+            wandb.log_model(path=f"{config['model_save_path']}/{config['run_id']}_0_{config['train_epochs']}.{ext}",
+                            name=f"{config['model_save_path']}_0_{config['train_epochs']}")
 
 
 def evaluate_sequential(args, runner):
@@ -425,9 +426,9 @@ def run_sequential(config: dict, logger):
             runner.t_env = args.train_epochs
 
 
-    if args.evaluate or args.save_replay:
+    if args.evaluate:
         print("start eval")
-        runner.t_env = args.train_epochs
+        # runner.t_env = args.train_epochs
         runner.log_train_stats_t = runner.t_env
         evaluate_sequential(args, runner)
 
@@ -547,8 +548,8 @@ def main(cfg: DictConfig):
 
     if cfg['name'] == 'ppo':
         cfg['training_type'] = 'sb3'
-    elif cfg['name'] in ['matd3', 'maddpg']:
-        cfg['training_type'] = 'agile_rl'
+    # elif cfg['name'] in ['matd3', 'maddpg']:
+    #     cfg['training_type'] = 'agile_rl'
     elif cfg['name'] != 'heuristic':
         cfg['training_type'] = 'marl'
 

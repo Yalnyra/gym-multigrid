@@ -1,12 +1,12 @@
 defaults:
   - _self_
-  - algorithm: vdn
+  - algorithm: iql
   - reward: fire_adjacent
   # - sweeper: wandb
   #   optional: True
-  # - experiments/open: openq
+  # - experiments/open: poam_train
   - experiments/env_size: default
-  - experiments/obs: range_six
+  - experiments/obs: range_ten
   - experiments/team_size: ten
   - experiments/fire_spread: default
   # - override hydra/job_logging: file
@@ -84,7 +84,8 @@ observations:
 run_id: ${name}_${agents}_${world_size}_${reward_type}_obs_${agent_view_size}${fire_spread}
 training_type: ???
 from_scratch: True
-evaluate: True
+evaluate: False
+save_replay: True # Saving the replay of the model loaded from checkpoint_path
 batch_size: 1 # Number of episodes to train on
 batch_size_run: 1 # Number of episodes to train on
 eval_mode: null
@@ -94,7 +95,8 @@ use_rnn: True
 model_save_path: out/models/
 
 # checkpoint: 'pac_sarsa_dcg_ns_10_13_fire_adjacent_obs_10'
-checkpoint: vdn_10_13_fire_adjacent_obs_10
+# checkpoint: vdn_10_13_fire_adjacent_obs_10
+checkpoint: 'tuned_ppo_obs_10'
 log: out/logs/
 train_epochs: 100_000
 memory_size: 10_000  # Max memory buffer size

@@ -29,6 +29,7 @@ class RNNAgent(nn.Module):
     def forward(self, inputs, hidden_state):
         orig_batch_dims = inputs.shape[:-1]
         h_in = hidden_state.reshape(-1, self.args.hidden_dim)
+        
         inputs.shape
         h_in.shape
         inputs = inputs.reshape(-1, self.input_shape)
@@ -36,6 +37,8 @@ class RNNAgent(nn.Module):
 
         x = F.relu(self.fc1(inputs))
         h_in = hidden_state.reshape(-1, self.args.hidden_dim)
+        hidden_state.shape
+        x.shape
         if self.args.use_rnn:
             h = self.rnn(x, h_in)
         else:

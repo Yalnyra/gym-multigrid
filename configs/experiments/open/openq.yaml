@@ -9,20 +9,22 @@ evaluate: True
 local_results_path: ${model_save_path}/open_eval # Relative path to save local results
 
 open: True 
-n_uncontrolled: 4 # number of uncontrolled agents to sample and add to trained agent team
+n_uncontrolled: 7 # number of uncontrolled agents to sample and add to trained agent team
 
+run_id: openq_${agents}_${n_uncontrolled}_obs_${agent_view_size}${fire_spread}
+buffer_size: 10
 # --- agents to load ---
 # define teams
 uncntrl_agents: 
-  iql: 
+  vdn: 
     agent_loader: rnn_eval_agent_loader
-    agent_path: iql_ns_10_13_fire_adjacent_obs_10
+    agent_path: tuned_vdn_obs_10
     load_step: last # Load model trained on this many timesteps (0 if choose max possible)
     n_agents_to_populate: 10 # must be less than n_agents
     test_mode: True
   qmix:
     agent_loader: rnn_eval_agent_loader
-    agent_path: qmix_ns_10_13_fire_adjacent_obs_10
+    agent_path: tuned_qmix_obs_10
     load_step: last
     n_agents_to_populate: 10 # must be less than n_agents
     test_mode: True
@@ -35,12 +37,13 @@ mask_type: "team" # choices: [team, agent]
 
 # --- Open train Parameters ---
 trained_agents:
-  agent_0:
+  iql:
     # agent_loader: poam_train_agent_loader
     agent_loader: rnn_eval_agent_loader
     n_agents_to_populate: 10
     load_step: last
-    agent_path: ${checkpoint}
+    # agent_path: ${checkpoint}
+    agent_path: tuned_iql_obs_10
 # trained_agents.agent_0.agent_path: 
 
 

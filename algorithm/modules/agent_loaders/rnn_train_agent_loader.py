@@ -52,9 +52,9 @@ class RNNTrainAgentLoader(BaseAgentLoader):
                 # Make the logits for unavailable actions very negative to minimise their affect on the softmax
                 
                 agent_outs[avail_actions == 0] = -1e10
-
-        chosen_actions = self.action_selector.select_action(agent_outs, 
-                                                            avail_actions,
+        
+        chosen_actions = self.action_selector.select_action(agent_outs.squeeze(1), 
+                                                            avail_actions.squeeze(1),
                                                             t_env, 
                                                             test_mode=test_mode)
         chosen_actions = chosen_actions.reshape(*ret_shape)

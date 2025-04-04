@@ -29,6 +29,7 @@ class OpenEvalMAC:
 
             _, act, hidden_state = agent.predict(ep_batch, agent_idx=agent_idx, 
                                                  t_ep=t_ep, t_env=t_env, bs=bs, test_mode=test_mode)
+            hidden_state.shape
             joint_act.append(act)
             joint_hidden.append(hidden_state)
         joint_act = th.cat(joint_act, dim=2)

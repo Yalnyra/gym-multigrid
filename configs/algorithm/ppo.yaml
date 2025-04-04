@@ -8,14 +8,15 @@ training_type: sb3
 init_hp:
   n_steps: 2048
   n_epochs: 10
-  batch_size: 128
-  learning_rate: 1e-4
-  gamma: 0.99
-  gae_lambda: 0.95
-  clip_range: 0.4
-  ent_coef: 0.6
+  batch_size: 256
+  learning_rate: 0.00017160877084200298
+  gamma: 0.9952005051580872
+  gae_lambda: 0.9586303715294834
+  clip_range: 0.234962334927364
+  ent_coef: 0.11063202746007618
   tensorboard_log: ${log}
-
 encoder_config:
   arch: mlp
-  hidden_size: [32, 32]  # Actor hidden size
+  hidden_size:
+  - 32
+  - 32

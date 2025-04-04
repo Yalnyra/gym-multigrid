@@ -73,9 +73,11 @@ class QLearner:
         mac_out = []
         # add batch dimension
         self.mac.init_hidden(batch.batch_size)
-        self.mac.hidden_states.shape
         for t in range(batch.max_seq_length):
             agent_outs = self.mac.forward(batch, t=t)
+            if (isinstance(agent_outs, tuple)):
+                agent_outs, _ = agent_outs
+                
             # print("Agent throughput", agent_outs.shape)
             mac_out.append(agent_outs)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
@@ -94,6 +96,8 @@ class QLearner:
         self.target_mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length):
             target_agent_outs = self.target_mac.forward(batch, t=t)
+            if (isinstance(target_agent_outs, tuple)):
+                target_agent_outs, _ = target_agent_outs
             target_mac_out.append(target_agent_outs)
 
         # We don't need the first timesteps Q-Value estimate for calculating targets

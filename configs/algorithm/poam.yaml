@@ -37,7 +37,7 @@ ed_model_uncontrolled_only: False # if True, model both controlled and uncontrol
 ed_epochs: 1
 n_ed_minibatch: 1 # 2
 n_ed_hidden_layers: 1
-ed_hidden_dim: 64
+ed_hidden_dim: 128
 embed_dim: 64
 ed_lr: 0.0005
 ed_bce_loss: False
@@ -70,8 +70,8 @@ mask_type: "team" # choices: [team, agent]
 # team: multiply default terminated and filled masks
 # ind: compute individual mask from available actions
 
-# --- Open train Parameters ---
-trained_agents:
-  agent_0:
-    agent_loader: poam_train_agent_loader
-    agent_path: ""
+# # --- Open train Parameters ---
+# trained_agents:
+#   agent_0:
+#     agent_loader: poam_train_agent_loader
+#     agent_path: ""

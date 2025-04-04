@@ -68,6 +68,10 @@ class RNNEvalAgentLoader(BaseAgentLoader):
         # fwd pass
         inputs = self._build_inputs(ep_batch_sliced, t_ep, agent_idx=agent_idx)
         hidden_state = ep_batch_sliced["actor_hidden_states"][:, ts, agent_slice]
+        # MUST MATCH INPUTS (1, 64) TO HIDDEN STATES (1,64), NOT (1,1,1,128) 
+        trunc_hidden_shape = self.saved_args.hidden_dim
+        hidden_state.shape
+        hidden_state = hidden_state.reshape(1, -1)[:, :trunc_hidden_shape]
         agent_outs, hidden_state = self.policy(inputs, hidden_state)
         agent_outs.shape
         ret_shape = (ep_batch_sliced.batch_size, ret_t, 1, -1)
@@ -83,6 +87,11 @@ class RNNEvalAgentLoader(BaseAgentLoader):
                                                             t_env, 
                                                             test_mode=test_mode)
         chosen_actions = chosen_actions.reshape(*ret_shape)
+        hidden_state = F.pad(hidden_state, (0, 
+                                            max(0, self.args.hidden_dim - self.saved_args.hidden_dim)), 
+                                            'constant',
+                                            value=0.)
+        assert(hidden_state.shape[-1] == self.args.hidden_dim)
         hidden_state = hidden_state.reshape(*ret_shape)
         return agent_outs, chosen_actions, hidden_state
 

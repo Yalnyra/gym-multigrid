@@ -122,7 +122,11 @@ class ParallelRunner:
         pre_transition_data = {"state": [], 
                                "avail_actions": [], 
                                "obs": [], 
-                               'actor_hidden_states': actor_hidden_states}
+                            #    'actor_hidden_states': actor_hidden_states
+                               }
+        if actor_hidden_states is not None:
+            pre_transition_data['actor_hidden_states']= actor_hidden_states
+
 
         # Get the obs, state and avail_actions back
         for parent_conn in self.parent_conns:
@@ -136,7 +140,8 @@ class ParallelRunner:
 
         self.t = 0
         self.env_steps_this_run = 0
-
+    
+    @th.no_grad()
     def run(self, test_mode=False):
         self.reset()
 
@@ -148,7 +153,7 @@ class ParallelRunner:
                 np.zeros(self.args.n_agents) for _ in range(self.batch_size)
             ]
         episode_lengths = [0 for _ in range(self.batch_size)]
-        self.mac.init_hidden(batch_size=self.batch_size)
+        actor_hidden_states = self.mac.init_hidden(batch_size=self.batch_size)
         terminated = [False for _ in range(self.batch_size)]
         envs_not_terminated = [
             b_idx for b_idx, termed in enumerate(terminated) if not termed
@@ -193,11 +198,11 @@ class ParallelRunner:
             if all_terminated:
                 break
             
-             # Remove rnn states for term envs
-            if len(envs_not_terminated) != actor_hidden_states.shape[0]: 
-                local_nonterm_idx_list = [idx for idx in range(actor_hidden_states.shape[0]) if idx not in local_term_idx_list]
-                actor_hidden_states = actor_hidden_states[local_nonterm_idx_list]
-                local_term_idx_list = [] # reset!
+            #  # Remove rnn states for term envs
+            # if len(envs_not_terminated) != actor_hidden_states.shape[0]: 
+            #     local_nonterm_idx_list = [idx for idx in range(actor_hidden_states.shape[0]) if idx not in local_term_idx_list]
+            #     actor_hidden_states = actor_hidden_states[local_nonterm_idx_list]
+            #     local_term_idx_list = [] # reset!
 
             # Post step data we will insert for the current timestep
             post_transition_data = {"reward": [], "terminated": []}
@@ -283,6 +288,7 @@ class ParallelRunner:
             max(1, self.args.test_nepisode // self.batch_size) * self.batch_size
         )
         if test_mode and (len(self.test_returns) == n_test_runs):
+        # if test_mode:
             self._log(cur_returns, cur_stats, log_prefix)
         elif self.t_env - self.log_train_stats_t >= self.args.runner_log_interval:
             self._log(cur_returns, cur_stats, log_prefix)

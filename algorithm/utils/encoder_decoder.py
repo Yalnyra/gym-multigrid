@@ -96,7 +96,7 @@ def build_encoder_inputs(n_agents, batch, t,
     
     # all keys in batch follow shape (bs, ts, n_agents, input_shape)
     obs_inputs_all = batch["obs"][:, ts]
-    print(obs_inputs_all.shape)
+    # print(obs_inputs_all.shape)
     if t is None:
         last_act_inputs_all = th.cat([th.zeros_like(batch["actions_onehot"][:, [0]]), 
                                              batch["actions_onehot"][:, slice(0, max_t-1)]],

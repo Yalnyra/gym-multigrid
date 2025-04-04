@@ -1,0 +1,21 @@
+# @package _global_
+name: maddpg
+
+algorithm:
+  _target_: algorithm.agilerl.model_MADDPG
+
+# model_save_path: out/models/${run_id}
+
+training_type: agile_rl
+init_hp:  
+  batch_size: 32 # Batch size
+  O_U_noise: True  # Ornstein Uhlenbeck action noise
+  expl_noise: 0.3  # Action noise scale
+  mean_noise: 0.0  # Mean action noise
+  theta: 0.15  # Rate of mean reversion in OU noise
+  dt: 0.01  # Timestep for OU noise
+  lr_actor: 0.0005  # Actor learning rate
+  lr_critic: 0.0005  # Critic learning rate
+  gamma: 0.99  # Discount factor
+  tau: 0.01  # For soft update of target parameters
+  learn_step: 5  # Learning frequency

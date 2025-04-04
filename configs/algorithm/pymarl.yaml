@@ -28,11 +28,11 @@ wandb_mode: "online" # W&B mode (online/offline)
 wandb_save_model: True # Save models to W&B (only done if use_wandb is True and save_model is True)
 save_model: True # Save the models to disk
 save_model_interval: ${valid_interval} # Save models after this many timesteps
-checkpoint_path: "vdn_10_13_fire_adjacent_obs_10" # Load a checkpoint from this path
+# checkpoint_path: "vdn_10_13_fire_adjacent_obs_10" # Load a checkpoint from this path
+checkpoint_path: ${checkpoint}
 evaluate: False # Evaluate model for test_nepisode episodes and quit (no training)
 render: False # Render the environment when evaluating (only when evaluate == True)
 load_step: 0 # Load model trained on this many timesteps (0 if choose max possible)
-save_replay: True # Saving the replay of the model loaded from checkpoint_path
 local_results_path: ${model_save_path} # Path for local results
 
 # --- RL hyperparameters ---
@@ -52,7 +52,7 @@ n_agents: ${agents}
 n_actions: 4
 state_shape: ''
 agent: "rnn" # Default rnn agent
-hidden_dim: 64 # Size of hidden state for default rnn agent
+hidden_dim: 128 # Size of hidden state for default rnn agent
 obs_agent_id: False # Include the agent's one_hot id in the observation
 obs_last_action: False # Include the agent's last action (one_hot) in the observation
 

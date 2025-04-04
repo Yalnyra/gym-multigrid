@@ -1,21 +1,29 @@
 # @package _global_
-name: maddpg
+# --- MADDPG specific parameters ---
 
-algorithm:
-  _target_: algorithm.agilerl.model_MADDPG
+runner: "episode"
 
-# model_save_path: out/models/${run_id}
+buffer_size: 50000
+# update the target network every {} episodes
+target_update_interval_or_tau: 200
 
-training_type: agile_rl
-init_hp:  
-  batch_size: 32 # Batch size
-  O_U_noise: True  # Ornstein Uhlenbeck action noise
-  expl_noise: 0.3  # Action noise scale
-  mean_noise: 0.0  # Mean action noise
-  theta: 0.15  # Rate of mean reversion in OU noise
-  dt: 0.01  # Timestep for OU noise
-  lr_actor: 0.0005  # Actor learning rate
-  lr_critic: 0.0005  # Critic learning rate
-  gamma: 0.99  # Discount factor
-  tau: 0.01  # For soft update of target parameters
-  learn_step: 5  # Learning frequency
+obs_agent_id: True
+obs_last_action: False
+obs_individual_obs: False
+
+
+# use the madddpg_learner to train
+mac: "maddpg_mac"
+reg: 0.001
+batch_size: 32
+lr: 0.0005
+use_rnn: True
+
+standardise_returns: False
+standardise_rewards: True
+
+learner: "maddpg_learner"
+agent_output_type: "pi_logits"
+hidden_dim: 128
+critic_type: "maddpg_critic"
+name: "maddpg"

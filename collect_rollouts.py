@@ -18,49 +18,168 @@ entity, project = "vinokur-eg-", "Wildfire"
 # filter by algorithm, run 
 # Two forms - summary table with each run summary: 
 # Averaged over 
-FIELDS = ['ID', 
-          'group', 
-          'name',
-          'seed', 
-          'partial_obs', 
-          'batch_size',
+FIELDS = [
+        #   'ID', 
+        #   'group', 
+        # #   'name',
+        #   'seed', 
+        #   'partial_obs', 
+        #   'batch_size',
 # Second - at each equal step in history collect into a separate table these metrics
 # HISTORY = [
         
-        #    'loss',
-        #    'q_taken_mean', 
-        #    'td_error', 
-           '_total_timesteps',
-          '_runtime'
-                    'train/mean_burnt trees',
-          'train/mean_reward',
-          'train/std_of_mean_reward',
-          'train/burnt trees', #avg over 5 runs
-          'train/mean_ep_length',
-        'train/burnt trees', 
-          'eval/burnt trees', #avg over 5 runs
-        
-        'eval/std_of_mean_reward',
-        'eval/mean_ep_length',
+           
+        # 'eval/burnt trees',
+        # 'eval/burnt_trees',
+        # 'train/burnt trees', 
+        # 'train/mean_burnt trees'
+        # 'eval/mean_burnt trees',
+        # 'eval/mean_burnt_trees',
+        # 'eval/mean_ep_length',
           ]
 
 HISTORY = [
-          '_step',
+        #   '_step',
+          '_runtime'
+
+          'loss',
+        #    'q_taken_mean', 
+        #    'td_error', 
+        #    '_total_timesteps',
+        #   '_runtime'
+            # 'train/mean_burnt trees',
+        #   'train/mean_reward',
+        #   'train/std_of_mean_reward',
+        #   'train/burnt trees', #avg over 5 runs
+          'train/mean_ep_length',
+            # 'train/burnt trees', 
+        #   'eval/burnt trees', #avg over 5 runs
+            # 'eval/best_mean_reward'
+        # 'eval/std_of_mean_reward',
+        # 'eval/mean_ep_length',
+        #  '_step',
 
         # 'pg_loss',
         # 'agent_0_0_critic_loss'
         'eval/mean_reward', #avg over 5 runs
+        # 'pg_loss',
+        # 'agent_0_0_critic_loss'
+        'eval/mean_reward', #avg over 5 runs
+        'eval/reward',
         # 'eval/burnt trees',
+        'eval/unburnt trees',
         # 'train/burnt trees', 
         # 'train/mean_burnt trees'
-        'eval/mean_burnt trees',
+        # 'eval/mean_burnt trees',
         'eval/mean_ep_length',
 
 ]
 
 AGENTS = [5, 10, 15, 20]
 
-def _load_data_from_wandb(ids=None, metric=None, date_after="2025-02-28##"):
+def history_tables(ids, metrics=HISTORY):
+    """Helper function for pulling results data from logs
+
+    Args:
+        folder (str):
+        metric (str):
+
+    Returns:
+        list of performance values
+    """
+    # The given folder will contain several sub-folders with random hashes like "1a8fdsk3"
+    # Within each sub-folder is the data we need
+    alg = [{"config.name": str(name)} for name in algos]
+    
+    run: Run
+    data = []
+    fields = FIELDS
+    fields.extend(HISTORY)
+
+    metric_dataframes = {metric: [] for metric in metrics}
+
+    for run_id in ids:
+        # Fetch the run using the wandb API
+        run = api.run(project+'/'+run_id)
+        print(f"Processing run: {run_id}")
+
+        summary = dict(run.summary._json_dict)
+
+        # if not 'eval/mean_reward' in summary and not 'train/mean_reward' in summary:
+        #     continue
+    
+        # Fetch the history data for the run
+        history: pd.DataFrame = run.history(pandas=True)
+    
+        # pivot = pivot_table(history, values=metric, aggfunc=[np.quantile, ])
+        # Extract data for each metric
+        for metric in metrics:
+            if metric in history:
+                # Create a DataFrame for the metric with run_id as the index
+                metric_df = history[[metric]]
+                # metric_df['run_id'] = run_id
+                metric_df.name = run.name
+                metric_df = metric_df.dropna()
+                metric_df = metric_df.assign(
+                    **{
+                    'ID': run.id,
+                    'name': run.name,
+                    # 'group': run.group,
+                    # 'name': run.config.get('run_id', None),
+                    # 'algo': run.config.get('algorithm', None),
+                    # 'job_type': run.config.get('agents', -5),
+                    # 'job_type': run.job_type,
+                }
+                )
+                # metric_df = metric_df.pivot(index='run_id', columns=metric_df.index, values=metric)
+                metric_dataframes[metric].append(metric_df.T)
+    if not os.path.exists(f"metrics"):
+        os.mkdir("metrics")
+    for metric, dfs in metric_dataframes.items():
+        if len(dfs) == 0:
+            continue
+        concat_df = pd.concat(dfs)
+        metric_name = metric.replace('/',"_")
+        concat_df.to_excel(f"metrics/{metric_name}_logs.xlsx", sheet_name=f'{metric_name} Log',float_format="%.3f", index=False)
+    # runs_df.to_json(f'{project}_wandb.json', orient='records', indent=2, )
+    
+
+def aggregate_metrics(history, metrics):
+    """
+    Aggregate metrics from history using quantile, mean, and std, and reshape them into a single axis.
+    """
+    # Perform aggregation for all metrics
+    aggregated = history[metrics].agg(
+        func=[lambda x: np.quantile(x, 0.95), 'mean', 'std']
+    )
+
+    # Flatten the multi-level columns
+    aggregated.columns = ['_'.join(col).strip() for col in aggregated.columns.values]
+
+    # Reset index to make it easier to work with
+    aggregated.reset_index(inplace=True)
+
+    # Reshape the DataFrame into a long format
+    melted = pd.melt(
+        aggregated,
+        id_vars=['index'],  # Keep the index column (if needed)
+        var_name='Metric_Aggregation',  # Name for the metric + aggregation column
+        value_name='Value'  # Name for the values
+    )
+
+    return melted
+
+def top_quant(x):
+    return x.quantile(0.95)
+
+def bottom_quant(x):
+    return x.quantile(0.05)
+
+def iqm(x):
+    df = pd.DataFrame()
+    return x[x <= x.quantile(0.75) and x >= x.quantile(0.25)].mean()
+
+def _load_data_from_wandb(ids=None, date_before="2025-07-28##", date_after="2025-02-28##"):
     """Helper function for pulling results data from logs
 
     Args:
@@ -74,10 +193,27 @@ def _load_data_from_wandb(ids=None, metric=None, date_after="2025-02-28##"):
     """
     # The given folder will contain several sub-folders with random hashes like "1a8fdsk3"
     # Within each sub-folder is the data we need
-    runs = api.runs(entity + "/" + project, order='-created_at', filters={"$and": [{"created_at": {
-                                                                                        "$gt": date_after
-                                                                                        }
-                                                                                        }]})
+    alg = [{"config.name": str(name)} for name in algos]
+    if ids is None:
+        runs = api.runs(entity + "/" + project, order='-created_at',
+                        filters={
+                            "$and": [
+                                # 
+                                {"created_at": {"$lt": "{}".format(date_before),"$gt": "{}".format(date_after)}},
+                                # {"job_type": job_type}
+                                # {"summary_metrics.eval.mean_reward": {"$ne": None} },
+                                    ],
+                            # "$or": 
+                            # # [
+                            # #     {"config.name": "vdn"},
+                            # #     {"config.name": "iql"},
+                            # #     {"config.name": "qmix"},
+                            # # ],
+                            # alg,
+                            },
+                            )
+    else:
+        runs = [api.run(project+'/'+id) for id in ids]
     run: Run
     data = []
     fields = FIELDS
@@ -86,8 +222,8 @@ def _load_data_from_wandb(ids=None, metric=None, date_after="2025-02-28##"):
 
     
     for run in runs:
-        if run.state == 'failed':
-            continue
+        # if run.state == 'failed':
+        #     continue
         # run_data = {field: run.summary.get(field, None) for field in FIELDS}
         summary = dict(run.summary._json_dict)
 
@@ -101,23 +237,9 @@ def _load_data_from_wandb(ids=None, metric=None, date_after="2025-02-28##"):
         history_data: pd.Series = run.history(pandas=True) 
                                             #    index=['_step'], 
                                             #    columns=HISTORY[1:]
-        if history_data.get('eval/burnt trees') is None and history_data.get('train/burnt trees'):
+        if history_data.get('eval/burnt trees') is None and history_data.get('train/burnt trees') is None:
             continue
-        history_data.filter(items=HISTORY)
 
-        history_data.dropna()
-        # if num_steps != expected_steps:
-        #     # Skip runs with differing number of steps.
-        #     continue
-
-        # Prepare per-step data and aggregate absolute metrics.
-        steps_dict = {}
-        
-        print("whole history: ",history_data.keys())
-        print(len(history_data.index))
-        # history_data = history_data.interpolate(method='index',) #'cubicspline'
-        # run_data.update({field: history_data.get(field, None) for field in FIELDS})
-        print(run.name)
         run_data = {}
         run_data.update({field: summary.get(field, None) for field in FIELDS if summary.get(field, None) is not None})
         run_data.update({
@@ -125,63 +247,60 @@ def _load_data_from_wandb(ids=None, metric=None, date_after="2025-02-28##"):
             'group': run.group,
             'name': run.name,
             'algo': run.config.get('name', None),
+            'reward type': run.config.get('reward_type', None),
+            # 'reward type': run.config.get('experiments.fire_spread', None),
             'team size': run.config.get('agents', -5),
-            'eval team size': run.config.get('agents_inference', -5),
+            # 'eval team size': run.config.get('agents_inference', -5),
             'seed': run.config.get('seed', None),
+            
             'eval_seed': run.config.get('eval_seed', None),
             'job_type': run.job_type,
+            'runtime': history_data.get('_runtime', pd.Series()).max()
         })
         run_data.update({field: run.config.get(field, None) for field in fields if run.config.get(field, None) is not None})
-        # for _, row in history_data.iterrows():
-        #     row.filter(FIELDS)
-        #     run_data.update(row.to_dict())
-        # print(history_data.tail(1).to_dict())
-        # history_data.dropna()
-        history_data.filter(fields)
-        # best_hist_dict = history_data.add_prefix('95% ',axis=1).quantile(0.95)
-        # mean_hist_dict = history_data.add_prefix('Mean ',axis=1).mean()
-        # std_hist_dict = history_data.add_prefix('Std ',axis=1).std()
-        hist_dict = history_data.tail(1)
-        hist_dict.dropna()
-        hist_dict = history_data.to_dict()
-        # hist_dict = {field: hist_dict.get(field)[history_data.last_valid_index()] for field in fields if hist_dict.get(field) is not None}
-        # best_hist_dict = best_hist_dict
-        print(hist_dict)
-        # exit()
-        run_data.update(hist_dict)
-        # run_data.update(best_hist_dict.)
         
+        history_data.filter(items=fields)
+
+        # agg = history_data
+        for metric in fields:
+            if metric in history_data:
+                try:
+                    # Create a DataFrame for the metric with run_id as the index
+                    metric_agg = history_data[metric].agg(
+                        func=[top_quant, bottom_quant, 'mean', 'std']
+                        )
+                    print(metric_agg.index)
+                    metric_agg = metric_agg.rename(lambda x: metric +' '+ x)
+                    run_data.update(metric_agg.to_dict())
+                except TypeError:
+                    print(f"Error at", history_data[metric])
+                    pass
+
+        history_data = history_data.interpolate(method='index',) #'cubicspline'
+        
+        # run_data.update({field: history_data.get(field, None) for field in FIELDS})
         
 
-        # if 'video' in run.config:
-        #     print("Video found:", run.config['video']['path'])
-        #     artifact = run.use_artifact(run.config['video']['path'])
-        #     artifact_dir = artifact.download()
-        #     print("loading video to :", artifact_dir)
-
-        # if 'config.yaml' in run.config:
-        #     artifact = run.use_artifact(run.config['config.yaml'])
-        #     artifact_dir = artifact.download()
-        #     print("loading yaml to :", artifact_dir)
-        #     with open(os.path.join(artifact_dir, 'config.yaml')) as f:
-        #         config_data = yaml.safe_load(f)
-        #         run_data.update(config_data)
         
-        data.append(run_data)
+        for _, row in history_data.iterrows():
+            row.filter(fields)
+            row = {field: row.get(field) for field in fields if row.get(field) is not None}
+            # top_row = {"95%_"+field: row.get(field).quantile(0.95) for field in fields if row.get(field) is not None}
+            run_data.update(row)
+        
         # last_step_metrics = run.history(keys=['_runtime', '_timestamp', '_step'], pandas=True).iloc[-1].to_dict()
         system_metrics:pd.DataFrame = run.history(
                                     keys=[
                                         "system.proc.memory.rssMB", 
-                                        "system.disk.\.usageGB", 
+                                        "system.disk.\\.usageGB", 
                                         "system.proc.cpu.threads",
                                         ],
                                         stream='system', pandas=False)
-        # if len(system_metrics) != 0:
+        
 
-        #     print("System: ", system_metrics.keys())
-        # # run_data.update(last_step_metrics)
         run_data.update(system_metrics)
 
+        data.append(run_data)
 
     runs_df = pd.DataFrame(
         data
@@ -192,8 +311,6 @@ def _load_data_from_wandb(ids=None, metric=None, date_after="2025-02-28##"):
     # runs_df = runs_df.set_index(keys=['id'])
 
     
-
-    runs_df.to_csv(f"{project}_wandb.csv",index=False)
     runs_df.to_excel(f"{project}_wandb.xlsx", 'sheet_name=Format ',index=False)
     runs_df.to_json(f'{project}_wandb.json', orient='records', indent=2, )
    
@@ -696,25 +813,74 @@ def plot_learning_curves_all(exp_dict:dict,
 
 files = ['vdn_qmix_iql_train.json']
 
-algos = ['vdn', 'iql', 'qmix', 'vdn_ns', 'iql_ns', 'qmix_ns']
+algos = ['vdn', 'iql', 'qmix', 'vdn_ns', 'iql_ns', 'qmix_ns', 'ppo', 'pac_ns', 'pac_dcg_ns']
 
+ids = ['a42pc4lp' ,
+       "8uh08xsg",
+"5q0m7dql",
+"ml5y5tdr",
+"i4uzxunh",
+"51sjde2h",
+"2ouga8c8",
+"hgcruj59",
+"ky9xul5g",
+"snweeyk7",
+"ayu4jmfv",
+"xeb9333f",
+"r1ysuns8",
+"vldr8lku",
+"i3kqetg6",
+"6nsb03ez",
+"0gdv7yed",
+"tsffdvsr",
+"5iaa2waw",
+
+
+
+
+
+
+"sa3qow6k",
+"hsb0v9z2",
+"pi95k8f5",
+"ccnwrnxm",
+"vdu48e5g",
+"uycyy8bn", 
+"oghikdes",
+"uin2ivzp", 
+"r0mfxq5g",
+"uycyy8bn", 
+"oghikdes",
+
+
+"xmmj8v5u",
+"brmiajpv",
+"qniji6xn",
+"4g6sddlt",
+"uv4wv030",
+"zqlidjyf",
+"622cmj9b",
+"iayw5h1b",
+"6u0jrh71",
+"1hrwc96n", ]
 steps = 20
 
 if __name__ == '__main__': 
-    
-    
-    # _load_data_from_wandb(date_after="2025-02-28##")
+    # history_tables(ids=ids, metrics=HISTORY)
+    _load_data_from_wandb(date_after="2025-03-12##")
+
     # Uncomment to regenerate data
     # Date after is a MongoDB regex
-    # load_marl_eval_history_data(equal_steps=steps, output_filename=files[0], job_type="train", algos=algos, date_before="2025-04-24##",  date_after="2025-03-16##")
+    exit()
+    load_marl_eval_history_data(equal_steps=steps, output_filename=files[0], job_type="test", algos=algos, date_before="2025-04-24##",  date_after="2025-03-16##")
 
 
     # # Load and process experiment outputs
     raw_dict = load_and_merge_json_dicts(files)
 
     # metrics = ['eval/mean_reward', 'eval/mean_burnt trees']
-    metrics = ['mean_norm_return','win_rate']
-    tasks = ['3456_10_13_train', '2004_10_13_train', '8007_10_13_train']
+    metrics = ['mean_norm_return','win_rate', 'eval/mean_unburnt trees']
+    tasks = ['3456_10_13_test', '3456_10_13_train', '2004_10_13_test', '8007_10_13_test']
     plot_history_data(raw_dict, metrics, tasks)
     
     # exit()

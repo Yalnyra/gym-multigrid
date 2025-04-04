@@ -71,7 +71,7 @@ class RNNPOAMAgent(nn.Module):
         # get hidden states from buffer
         if hidden_state is None:
             hidden_state = ep_batch["actor_hidden_states"][:, ts]
-            print(hidden_state.shape)
+            # print(hidden_state.shape)
             h_e, h_in = hidden_state[:, :, :, 0], hidden_state[:, :, :, 1]
         else: # hack that applies only to the open eval runner
             h_e, h_in = hidden_state
@@ -126,16 +126,16 @@ class RNNPOAMAgent(nn.Module):
                 last_act = th.zeros_like(batch["actions_onehot"][:, ts]) if t == 0 else batch["actions_onehot"][:, slice(t-1, t)]
                 # last_act = last_act.repeat(1, self.n_agents, 1).expand(bs, 1, self.n_agents, -1)
                 inputs.append(last_act)
-                print(last_act.shape)
+                # print(last_act.shape)
         if self.args.obs_agent_id:
             agent_id_onehot = th.eye(self.n_agents, device=batch.device)
             agent_id_onehot = agent_id_onehot.expand(bs, max_t, self.n_agents, -1) if t is None \
                 else agent_id_onehot.expand(bs, 1, self.n_agents, -1)
             inputs.append(agent_id_onehot)
-        print(inputs[0].shape)
+        # print(inputs[0].shape)
         # agent_id_onehot.shape
         inputs = th.cat(inputs, dim=-1) # shape (bs, ts, n_agents, input_shape)
-        print(inputs.shape)
+        # print(inputs.shape)
         return inputs
 
     def load(self, path):
